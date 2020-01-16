@@ -22,19 +22,55 @@
 #include <vector>
 
 // Android log function wrappers
-static const char* kTAG = "Vulkan-Tutorial05";
-#define LOGI(...) \
+//static const char* kTAG = "Vulkan-Tutorial05";
+#define LOGI( ... ) \
   ((void)__android_log_print(ANDROID_LOG_INFO, kTAG, __VA_ARGS__))
-#define LOGW(...) \
+#define LOGW( ... ) \
   ((void)__android_log_print(ANDROID_LOG_WARN, kTAG, __VA_ARGS__))
-#define LOGE(...) \
+#define LOGE( ... ) \
   ((void)__android_log_print(ANDROID_LOG_ERROR, kTAG, __VA_ARGS__))
 
 // Vulkan call wrapper
-#define CALL_VK(func)                                                 \
+#define CALL_VK( func )                                                 \
   if (VK_SUCCESS != (func)) {                                         \
     __android_log_print(ANDROID_LOG_ERROR, "Tutorial ",               \
                         "Vulkan error. File[%s], line[%d]", __FILE__, \
                         __LINE__);                                    \
     assert(false);                                                    \
   }
+
+struct VulkanDeviceInfo
+{
+    bool initialized_;
+    VkInstance instance_;
+    VkPhysicalDevice physicalDevice_;
+    VkDevice device_;
+    uint32_t queueFamilyIndex_;
+    VkSurfaceKHR surface_;
+    VkQueue queue_;
+};
+
+// Initialize vulkan device context
+// after return, vulkan is ready to draw
+bool InitVulkan( android_app* app )
+{
+    return true;
+}
+
+// delete vulkan device context when application goes away
+void DeleteVulkan( void )
+{
+
+}
+
+// Check if vulkan is ready to draw
+bool IsVulkanReady( void )
+{
+    return true;
+}
+
+// Ask Vulkan to Render a frame
+bool VulkanDrawFrame( void )
+{
+    return true;
+}
