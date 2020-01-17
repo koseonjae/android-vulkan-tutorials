@@ -160,6 +160,60 @@ void CreateVulkanDevice( ANativeWindow* platformWindow, VkApplicationInfo* appIn
     vkGetDeviceQueue( device.device_, queueFamilyIndex, 0, &device.queue_ );
 }
 
+void CreateSwapChain( void )
+{
+    // memset( &swapchain, 0, sizeof( swapchain ) );
+
+    VkSurfaceCapabilitiesKHR surfaceCapabilities;
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR( device.physicalDevice_, device.surface_, &surfaceCapabilities );
+
+    uint32_t surfaceFormatCount{ 0 };
+    std::vector<VkSurfaceFormatKHR> surfaceFormats;
+    vkGetPhysicalDeviceSurfaceFormatsKHR( device.physicalDevice_, device.surface_, &surfaceFormatCount, nullptr );
+    surfaceFormats.resize( surfaceFormatCount );
+    vkGetPhysicalDeviceSurfaceFormatsKHR( device.physicalDevice_, device.surface_, &surfaceFormatCount, surfaceFormats.data() );
+
+    uint32_t chosenFormat{ 0 };
+    for( auto it = surfaceFormats.begin(); it != surfaceFormats.end(); ++it )
+    {
+        if( it->format == VK_FORMAT_R8G8B8_UNORM )
+        {
+            chosenFormat = it - surfaceFormats.begin();
+        }
+    }
+    assert( chosenFormat );
+
+    swapchain.displaySize_ = surfaceCapabilities.currentExtent;
+    swapchain.displayFormat_ = surfaceFormats[chosenFormat].format;
+
+    assert( surfaceCapabilities.supportedCompositeAlpha | VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR ); // TODO: PR duplicate logic
+
+    VkSwapchainCreateInfoKHR swapchainCreateInfo;
+    swapchainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    swapchainCreateInfo.pNext = nullptr;
+    swapchainCreateInfo.flags = 0;
+    swapchainCreateInfo.surface = device.surface_;
+    swapchainCreateInfo.minImageCount = surfaceCapabilities.minImageCount;
+    swapchainCreateInfo.imageFormat = surfaceFormats[chosenFormat].format;
+    swapchainCreateInfo.imageColorSpace = surfaceFormats[chosenFormat].colorSpace;
+    swapchainCreateInfo.imageExtent = surfaceCapabilities.currentExtent;
+    swapchainCreateInfo.imageArrayLayers = 1; // stereo에서 view의 수 (3D가 아닌 경우는 1)
+    swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE; // queue에서 이미지에 어떻게 접근할지에 대한 공유 모드 설정
+    swapchainCreateInfo.queueFamilyIndexCount = 1;
+    swapchainCreateInfo.pQueueFamilyIndices = &device.queueFamilyIndex_;
+    swapchainCreateInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+    swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
+    swapchainCreateInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+    swapchainCreateInfo.clipped = VK_FALSE;
+    swapchainCreateInfo.oldSwapchain = VK_NULL_HANDLE;
+    VkResult result = vkCreateSwapchainKHR( device.device_, &swapchainCreateInfo, nullptr, &swapchain.swapchain_ );
+    assert( result == VK_SUCCESS );
+
+    swapchain.displayImages_.resize( surfaceCapabilities.minImageCount );
+    vkGetSwapchainImagesKHR( device.device_, swapchain.swapchain_, &swapchain.swapchainLength_, nullptr );
+}
+
 // Initialize vulkan device context
 // after return, vulkan is ready to draw
 bool InitVulkan( android_app* app )
@@ -180,6 +234,8 @@ bool InitVulkan( android_app* app )
     appInfo.pEngineName = "tutorial";
 
     CreateVulkanDevice( app->window, &appInfo );
+
+    CreateSwapChain();
 
     return true;
 }
