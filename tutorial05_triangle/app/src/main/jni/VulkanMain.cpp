@@ -82,6 +82,12 @@ void setImageLayout( VkCommandBuffer cmdBuffer, VkImage image, VkImageLayout old
 
 void CreateVulkanDevice( ANativeWindow* platformWindow, VkApplicationInfo* appInfo )
 {
+    // instance         : vulkan instance. surface와 physical device 생성에 쓰임
+    // physical device  : gpu. 메모리 정보와 command submit을 위한 queue 정보를 얻는데 쓰임
+    // queue family     : queue family는 동일한 property를 가진 queue들의 집합이다. (queue의 property에 따라 수행할 수 있는 command의 종류가 다르다.)
+    //                  : 여기에선 graphics property를 가진 큐들의 집합(queue family)을 구해서 사용한다. => graphics command를 submit할꺼니까
+    // device           : graphics queue property를 가진 queue family를 가지고 device를 초기화 했음 -> graphics용 device 초기화
+
     std::vector<const char*> instance_extensions;
     std::vector<const char*> device_extensions;
 
@@ -140,8 +146,8 @@ void CreateVulkanDevice( ANativeWindow* platformWindow, VkApplicationInfo* appIn
     queueCreateInfo.pNext = nullptr;
     queueCreateInfo.flags = 0;
     queueCreateInfo.pQueuePriorities = priorities.data();
-    queueCreateInfo.queueFamilyIndex = queueFamilyIndex;
-    queueCreateInfo.queueCount = 1;
+    queueCreateInfo.queueFamilyIndex = queueFamilyIndex; // graphics queue property를 가진 queue family를 가지고 device를 초기화 했음 -> graphics용 device 초기화
+    queueCreateInfo.queueCount = 1; // set of queue중 하나의 queue만을 사
 
     VkDeviceCreateInfo deviceCreateInfo;
     deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -157,7 +163,7 @@ void CreateVulkanDevice( ANativeWindow* platformWindow, VkApplicationInfo* appIn
     result = vkCreateDevice( device.physicalDevice_, &deviceCreateInfo, nullptr, &device.device_ );
     assert( result == VK_SUCCESS );
 
-    vkGetDeviceQueue( device.device_, queueFamilyIndex, 0, &device.queue_ );
+    vkGetDeviceQueue( device.device_, queueFamilyIndex, 0, &device.queue_ ); // queue family중에서 사용하는 하나의 queue를 얻어온다.
 }
 
 void CreateSwapChain( void )
