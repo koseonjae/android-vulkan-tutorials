@@ -168,7 +168,9 @@ void CreateVulkanDevice( ANativeWindow* platformWindow, VkApplicationInfo* appIn
 
 void CreateSwapChain( void )
 {
-    // memset( &swapchain, 0, sizeof( swapchain ) );
+    // GPU가 android surface에게 지원하는 capability를 가져온다.
+    // GPU가 android surface에게 지원하는 format을 가져온다. => VK_FORMAT_R8G8B8_UNORM format에 대한 index를 얻는다.
+    // => capability와 format 정보를 통해 swapchain을 생성한다
 
     VkSurfaceCapabilitiesKHR surfaceCapabilities;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR( device.physicalDevice_, device.surface_, &surfaceCapabilities );
@@ -209,10 +211,10 @@ void CreateSwapChain( void )
     swapchainCreateInfo.queueFamilyIndexCount = 1;
     swapchainCreateInfo.pQueueFamilyIndices = &device.queueFamilyIndex_;
     swapchainCreateInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
-    swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
-    swapchainCreateInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
-    swapchainCreateInfo.clipped = VK_FALSE;
-    swapchainCreateInfo.oldSwapchain = VK_NULL_HANDLE;
+    swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR; // 다른 surface와 혼합될때의 mode
+    swapchainCreateInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR; // present requests와 큐잉에 대한 정책
+    swapchainCreateInfo.clipped = VK_FALSE; // 보이지않는 부분에 대한 rendering operation을 discard 할지
+    swapchainCreateInfo.oldSwapchain = VK_NULL_HANDLE; //  VK_NULL_HANDLE or 현재 surface에 연결된 swapchain (리소스 재사용을 돕는다)
     VkResult result = vkCreateSwapchainKHR( device.device_, &swapchainCreateInfo, nullptr, &swapchain.swapchain_ );
     assert( result == VK_SUCCESS );
 
