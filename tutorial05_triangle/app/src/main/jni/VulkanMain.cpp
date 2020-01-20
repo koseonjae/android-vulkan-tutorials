@@ -225,6 +225,21 @@ void CreateSwapChain( void )
 void CreateRenderPass( void )
 {
     // https://lifeisforu.tistory.com/462
+    // renderpass dependency    : 렌더패스가 사용하는 attachment들의 종속성에 의해 렌더패스간의 종속성이 결정된다.
+    // attachment description   : 렌더패스에 attachment를 지정할때의 속성. (포맷, 용도, MSAA, load clear op, save or not, layout etc..)
+    // renderpass object        : vkCreateRenderPass에 의해 생성되는 렌더패스객체는 템플릿으로써 존재함.
+    //                          : VkCmdBeginRenderPass가 호출될때 실제 인스턴스가 생성되고, 각 어태치먼트와 관련된 리소스들을 프레임버퍼로 바인딩합니다
+
+    // renderpass command를 위해 기본적으로 세 객체가 필요: renderpass, framebuffer, command
+    // 이것의 장점 -> no validation, no exception & dependency management & life cycle management
+
+    // no validation no exception   : render pass 이외에도 descriptor-instance 쌍을 이루는 경우가 많음 (예를들어 descriptor set layout)
+    //                              : descriptor가 존재하는 이유는 vulkan이 리소스들의 메모리구조를 알지 못하기 때문이다.
+    //                              : descriptor가 메모리에 대한 모든 정보를 가지고 있다.
+    //                              : 이렇게하면 개체를 생성하는 시점에 validation을 수행가능 (리소스를 바인딩하는 시점에서 API 내부적인 검증을 할 필요가 없다.)
+    //                              : => 성능상의 이점
+    // dependency management        : 커맨드 버퍼를 통해 렌더패스간 의존성을 관리 (의존성이 있는 렌더패스를 가지고 있는 커맨드버퍼들을 동기화)
+    // life cycle management        : 멀티스레딩 환경에서 렌더패스 인스턴스, 커맨드 버퍼, 프레임 버퍼 등의 생명주기를 관리하는데 용이
 
     VkAttachmentDescription attachmentDescription; // attachment의 다양한 속성 지정
     attachmentDescription.flags = 0;
