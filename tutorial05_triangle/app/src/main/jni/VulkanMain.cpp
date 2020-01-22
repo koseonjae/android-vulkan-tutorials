@@ -229,11 +229,14 @@ void CreateSwapChain( void )
 
 void CreateRenderPass( void )
 {
+    // https://vulkan.lunarg.com/doc/view/1.0.37.0/linux/vkspec.chunked/ch07.html
     // https://lifeisforu.tistory.com/462
     // renderpass dependency    : 렌더패스가 사용하는 attachment들의 종속성에 의해 렌더패스간의 종속성이 결정된다.
     // attachment description   : 렌더패스에 attachment를 지정할때의 속성. (포맷, 용도, MSAA, load clear op, save or not, layout etc..)
     // renderpass object        : vkCreateRenderPass에 의해 생성되는 렌더패스객체는 템플릿으로써 존재함.
     //                          : VkCmdBeginRenderPass가 호출될때 실제 인스턴스가 생성되고, 각 어태치먼트와 관련된 리소스들을 프레임버퍼로 바인딩합니다
+    // subpass                  : deferred shading 같은 여러개의 파이프라인을 거칠때, 서브패스를 추가하여 renderpass를 구성할 수 있다.
+    //                          : subpass는 정확히 해당 픽셀에만 접근이 가능하고, 주변 픽셀엔 접근이 불가능하다는 제약이 있다. -> blur 같은 효과를 할 수 없음(주변픽셀에도 접근해야하니까)
 
     // renderpass command를 위해 기본적으로 세 객체가 필요: renderpass, framebuffer, command
     // 이것의 장점 -> no validation, no exception & dependency management & life cycle management
@@ -605,18 +608,28 @@ void CreateGraphicsPipeline( void )
 
 void CreateCommand( void )
 {
+    // https://vulkan.lunarg.com/doc/view/1.0.37.0/linux/vkspec.chunked/ch07.html
     // CommandPool      : queue property를 위해 queueFamilyIndex를 가지고 초기화
-    // CommandBuffer    : commandPool과 중요성, length를 통해 command buffer array 생성
+    // CommandBuffer    : primary command buffer    : 실행을 위해 큐로 보내지는 명령들의 집합
+    //                  : secondary command buffer  : 직접 큐로 보내지지 않고, primary command buffer에 의해 실행됨
+    //                                              : vkCmdExecuteCommands(primary_command_buffer, secondary_command_buffer_count, secondary_command_buffers);
+    //                                              : frame마다 변하지 않는 command들을 레코딩하기에 유용하다. & 사이즈가 큰 primary command buffer를 줄일 수 있다.
 
     // Command Recording
     //                  : beginCommandBuffer    : 커맨드 버퍼 레코딩 시작
     //                  : setImageLayout        :
-    //                  : beginRenderPass       : render pass와 framebuffer를 통해 render target을 결정한다 & clearValue 정의
+    //                  : beginRenderPass       : 렌더패스 인스턴스를 만들고, 렌드패스 인스턴스 레코딩을 시작
     //                  : bindPipeline          : 파이프라인 바인딩
     //                  : bindVertexBuffers     : 파이프라인에서 사용하는 리소스 바인딩
     //                  : draw                  : 드로우 동작을 정의한다. (실제 드로잉 되는게 아님)
-    //                  : endRenderPass         : 렌더패스 인스턴스 레코딩 종료
+    //                  : endRenderPass         : 렌더패스 인스턴스 레코딩종료 (커맨드가 execute될때 렌더패스 인스턴스가 실행됨)
     //                  : endCommandBuffer      : 커맨드 버퍼 레코딩 종료
+
+    // vkCmdNextSubpass : To transition to the next subpass in the render pass instance after recording the commands for a subpass
+    //                  : The subpass index for a render pass begins at zero when vkCmdBeginRenderPass is recorded, and increments each time vkCmdNextSubpass is recorded.
+
+
+    // Rendering commands are recorded into a particular subpass of a render pass instance
 
     VkCommandPoolCreateInfo commandPoolCreateInfo;
     commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -666,12 +679,16 @@ void CreateCommand( void )
         renderPassBeginInfo.pClearValues = &clearVals;
         vkCmdBeginRenderPass( render.cmdBuffer_[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE );
 
+        // 0번 subpass에 대한 call
         vkCmdBindPipeline( render.cmdBuffer_[i], VK_PIPELINE_BIND_POINT_GRAPHICS, gfxPipeline.pipeline_ );
-
         VkDeviceSize offset = 0;
         vkCmdBindVertexBuffers( render.cmdBuffer_[i], 0, 1, &buffers.vertexBuf_, &offset );
-
         vkCmdDraw( render.cmdBuffer_[i], 3, 1, 0, 0 );
+
+        // 여러개의 서브패스가 있을 경우
+        // vkCmdNextSubpass(); // 1번 subpass에 대한 call로 넘어감
+        // vkCmdBindPipeline();
+        // vkCmdDraw();
 
         vkCmdEndRenderPass( render.cmdBuffer_[i] );
 
