@@ -254,14 +254,14 @@ void CreateRenderPass( void )
     attachmentDescription.storeOp = VK_ATTACHMENT_STORE_OP_STORE; // 쓰고 버릴거면 don't care로하고, 저장할꺼면 store로 한다.
     attachmentDescription.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     attachmentDescription.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachmentDescription.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED; // renderpass 이전의 layout.
-    attachmentDescription.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; // renderpass 이후의 layout
+    attachmentDescription.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED; // renderpass 시작전에 어떤 layout 인가 (처음 생성되었으니 undefined)
+    attachmentDescription.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; // renderpass 이후의 layout 으로 바뀔건가 (layout 변환 없이 그대로 간다)
 
     // attachment reference 에서의 layout은 실제로 렌더링 파이프라인에서 쓰일 layout
     // 드라이버는 이 부분을 알아서 전환해주지 않음, 응용 프로그램에서 모두 정의 해줘야 함
     VkAttachmentReference attachmentReference;
     attachmentReference.attachment = 0;
-    attachmentReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // renderpass에서 layout
+    attachmentReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // renderpass에서 어떤 layout 으로 동작할건가(컬러첨부에 적합한 값으로 설정)
 
     VkSubpassDescription subpassDescription;
     subpassDescription.flags = 0;
@@ -291,6 +291,15 @@ void CreateRenderPass( void )
 
 void CreateFramebuffers( VkRenderPass renderPass, VkImageView depthView = VK_NULL_HANDLE )
 {
+    // VkImage          : 어떤 VkMemory가 사용되는지와, 어떤 texel format인지를 정의한다.
+    //                  : swapchain이 생성될때 내부적으로 swapchainLen만큼 image생성 (swapchain을 생성할때 VkImage 생성에 대한 정보를 넘겨줬음)
+    // VkImageView      : VkImage의 어느 부분을 사용할지 정의한다. & 호환불가능한 interface와 매치할 수 있도록 정의 (format 변환을 통해)
+    //                  : image로부터 imageView생성
+    // VKFramebuffer    : 어떤 imageView가 attachment가 될 것이며, 어떤 format으로 쓰일지 결정한다.
+
+    // Swapchain Image  : 스왑 체인 이미지는 드라이버가 소유권을 가지고 있으며 할당, 해제할 수 없다.
+    //                  : 단지 acquire & present operation 할때 잠시 빌려서 쓰는것 뿐임
+
     VkResult result = vkGetSwapchainImagesKHR( device.device_, swapchain.swapchain_, &swapchain.swapchainLength_, swapchain.displayImages_.data() );
     assert( result == VK_SUCCESS );
 
