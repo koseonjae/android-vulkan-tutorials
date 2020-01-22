@@ -83,10 +83,15 @@ void setImageLayout( VkCommandBuffer cmdBuffer, VkImage image, VkImageLayout old
 void CreateVulkanDevice( ANativeWindow* platformWindow, VkApplicationInfo* appInfo )
 {
     // instance         : vulkan instance. surface와 physical device 생성에 쓰임
+    // android surface  : ANativeWindow와 vulkan instance를 통해 surface 생성
     // physical device  : gpu. 메모리 정보와 command submit을 위한 queue 정보를 얻는데 쓰임
     // queue family     : queue family는 동일한 property를 가진 queue들의 집합이다. (queue의 property에 따라 수행할 수 있는 command의 종류가 다르다.)
     //                  : 여기에선 graphics property를 가진 큐들의 집합(queue family)을 구해서 사용한다. => graphics command를 submit할꺼니까
     // device           : graphics queue property를 가진 queue family를 가지고 device를 초기화 했음 -> graphics용 device 초기화
+    // layer            : 특정한(주로 검증) 목적을 위해 구성된 vulkan 소프트웨어 계층
+    //                  : 레이어는 기존 vulkan api에 연결되고, 지정된 레이어와 연결된 vulkan 명령체인에 삽입됨
+    //                  : 예를들어 vulkan api로 올바른 파라미터가 들어오는지 검증한다.
+    //                  : 이러한 레이어는 릴리즈에선 사용하지 않게 설정하면 불필요한 오버헤드를 줄일 수 있다.
 
     std::vector<const char*> instance_extensions;
     std::vector<const char*> device_extensions;
@@ -200,17 +205,17 @@ void CreateSwapChain( void )
     swapchainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
     swapchainCreateInfo.pNext = nullptr;
     swapchainCreateInfo.flags = 0;
-    swapchainCreateInfo.surface = device.surface_;
+    swapchainCreateInfo.surface = device.surface_; // swapchain이 이미지를 보여줄 surface
     swapchainCreateInfo.minImageCount = surfaceCapabilities.minImageCount;
     swapchainCreateInfo.imageFormat = surfaceFormats[chosenFormat].format;
     swapchainCreateInfo.imageColorSpace = surfaceFormats[chosenFormat].colorSpace;
     swapchainCreateInfo.imageExtent = surfaceCapabilities.currentExtent;
     swapchainCreateInfo.imageArrayLayers = 1; // stereo에서 view의 수 (3D가 아닌 경우는 1)
-    swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE; // queue에서 이미지에 어떻게 접근할지에 대한 공유 모드 설정
+    swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // swapchain image의 usage
+    swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE; // queue faily에서 동시 접근 가능 여부
     swapchainCreateInfo.queueFamilyIndexCount = 1;
-    swapchainCreateInfo.pQueueFamilyIndices = &device.queueFamilyIndex_;
-    swapchainCreateInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+    swapchainCreateInfo.pQueueFamilyIndices = &device.queueFamilyIndex_; // concurrent 모드이면 여러개의 indices를 전달해야할듯
+    swapchainCreateInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR; // present전에 수행할 transform
     swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR; // 다른 surface와 혼합될때의 mode
     swapchainCreateInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR; // present requests와 큐잉에 대한 정책
     swapchainCreateInfo.clipped = VK_FALSE; // 보이지않는 부분에 대한 rendering operation을 discard 할지
