@@ -291,6 +291,7 @@ void CreateRenderPass( void )
 
 void CreateFramebuffers( VkRenderPass renderPass, VkImageView depthView = VK_NULL_HANDLE )
 {
+    // https://stackoverflow.com/questions/39557141/what-is-the-difference-between-framebuffer-and-image-in-vulkan
     // VkImage          : 어떤 VkMemory가 사용되는지와, 어떤 texel format인지를 정의한다.
     //                  : swapchain이 생성될때 내부적으로 swapchainLen만큼 image생성 (swapchain을 생성할때 VkImage 생성에 대한 정보를 넘겨줬음)
     // VkImageView      : VkImage의 어느 부분을 사용할지 정의한다. & 호환불가능한 interface와 매치할 수 있도록 정의 (format 변환을 통해)
@@ -602,6 +603,97 @@ void CreateGraphicsPipeline( void )
     vkDestroyShaderModule( device.device_, fragmentShader, nullptr );
 }
 
+void CreateCommand( void )
+{
+    // CommandPool      : queue property를 위해 queueFamilyIndex를 가지고 초기화
+    // CommandBuffer    : commandPool과 중요성, length를 통해 command buffer array 생성
+
+    // Command Recording
+    //                  : beginCommandBuffer    : 커맨드 버퍼 레코딩 시작
+    //                  : setImageLayout        :
+    //                  : beginRenderPass       : render pass와 framebuffer를 통해 render target을 결정한다 & clearValue 정의
+    //                  : bindPipeline          : 파이프라인 바인딩
+    //                  : bindVertexBuffers     : 파이프라인에서 사용하는 리소스 바인딩
+    //                  : draw                  : 드로우 동작을 정의한다. (실제 드로잉 되는게 아님)
+    //                  : endRenderPass         : 렌더패스 인스턴스 레코딩 종료
+    //                  : endCommandBuffer      : 커맨드 버퍼 레코딩 종료
+
+    VkCommandPoolCreateInfo commandPoolCreateInfo;
+    commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    commandPoolCreateInfo.pNext = nullptr;
+    commandPoolCreateInfo.flags = 0;
+    commandPoolCreateInfo.queueFamilyIndex = device.queueFamilyIndex_;
+    VkResult result = vkCreateCommandPool( device.device_, &commandPoolCreateInfo, nullptr, &render.cmdPool_ );
+    assert( result == VK_SUCCESS );
+
+    render.cmdBufferLen_ = swapchain.swapchainLength_;
+    render.cmdBuffer_ = new VkCommandBuffer[render.cmdBufferLen_];
+    VkCommandBufferAllocateInfo commandBufferAllocateInfo;
+    commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    commandBufferAllocateInfo.pNext = nullptr;
+    commandBufferAllocateInfo.commandPool = render.cmdPool_;
+    commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    commandBufferAllocateInfo.commandBufferCount = render.cmdBufferLen_;
+    result = vkAllocateCommandBuffers( device.device_, &commandBufferAllocateInfo, render.cmdBuffer_ );
+    assert( result == VK_SUCCESS );
+
+    for( int i = 0; i < swapchain.swapchainLength_; ++i ) // 각 스왑체인 색상 이미지에 커맨드 버퍼 개체를 만든다.
+    {
+        VkCommandBufferBeginInfo commandBufferBeginInfo;
+        commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        commandBufferBeginInfo.pNext = nullptr;
+        commandBufferBeginInfo.flags = 0;
+        commandBufferBeginInfo.pInheritanceInfo = nullptr;
+        result = vkBeginCommandBuffer( render.cmdBuffer_[i], &commandBufferBeginInfo );
+        assert( result == VK_SUCCESS );
+
+        setImageLayout( render.cmdBuffer_[i], swapchain.displayImages_[i], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT );
+
+        VkClearValue clearVals;
+        clearVals.color.float32[0] = 0.0f;
+        clearVals.color.float32[1] = 0.34f;
+        clearVals.color.float32[2] = 0.9f;
+        clearVals.color.float32[3] = 1.0f;
+
+        VkRenderPassBeginInfo renderPassBeginInfo;
+        renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        renderPassBeginInfo.pNext = nullptr;
+        renderPassBeginInfo.renderPass = render.renderPass_;
+        renderPassBeginInfo.framebuffer = swapchain.framebuffers_.at( i );
+        renderPassBeginInfo.renderArea.offset = { .x=0, .y=0 };
+        renderPassBeginInfo.renderArea.extent = swapchain.displaySize_;
+        renderPassBeginInfo.clearValueCount = 1;
+        renderPassBeginInfo.pClearValues = &clearVals;
+        vkCmdBeginRenderPass( render.cmdBuffer_[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE );
+
+        vkCmdBindPipeline( render.cmdBuffer_[i], VK_PIPELINE_BIND_POINT_GRAPHICS, gfxPipeline.pipeline_ );
+
+        VkDeviceSize offset = 0;
+        vkCmdBindVertexBuffers( render.cmdBuffer_[i], 0, 1, &buffers.vertexBuf_, &offset );
+
+        vkCmdDraw( render.cmdBuffer_[i], 3, 1, 0, 0 );
+
+        vkCmdEndRenderPass( render.cmdBuffer_[i] );
+
+        result = vkEndCommandBuffer( render.cmdBuffer_[i] );
+        assert( result == VK_SUCCESS );
+    }
+
+    VkFenceCreateInfo fenceCreateInfo;
+    fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fenceCreateInfo.pNext = nullptr;
+    fenceCreateInfo.flags = 0;
+    result = vkCreateFence( device.device_, &fenceCreateInfo, nullptr, &render.fence_ );
+    assert( result == VK_SUCCESS );
+
+    VkSemaphoreCreateInfo semaphoreCreateInfo;
+    semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    semaphoreCreateInfo.pNext = nullptr;
+    semaphoreCreateInfo.flags = 0;
+    result = vkCreateSemaphore( device.device_, &semaphoreCreateInfo, nullptr, &render.semaphore_ );
+    assert( result == VK_SUCCESS );
+}
+
 // Initialize vulkan device context
 // after return, vulkan is ready to draw
 bool InitVulkan( android_app* app )
@@ -633,80 +725,7 @@ bool InitVulkan( android_app* app )
 
     CreateGraphicsPipeline();
 
-    VkCommandPoolCreateInfo commandPoolCreateInfo;
-    commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    commandPoolCreateInfo.pNext = nullptr;
-    commandPoolCreateInfo.flags = 0;
-    commandPoolCreateInfo.queueFamilyIndex = device.queueFamilyIndex_;
-    VkResult result = vkCreateCommandPool( device.device_, &commandPoolCreateInfo, nullptr, &render.cmdPool_ );
-    assert( result == VK_SUCCESS );
-
-    render.cmdBufferLen_ = swapchain.swapchainLength_;
-    render.cmdBuffer_ = new VkCommandBuffer[render.cmdBufferLen_];
-    VkCommandBufferAllocateInfo commandBufferAllocateInfo;
-    commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    commandBufferAllocateInfo.pNext = nullptr;
-    commandBufferAllocateInfo.commandPool = render.cmdPool_;
-    commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    commandBufferAllocateInfo.commandBufferCount = render.cmdBufferLen_;
-    result = vkAllocateCommandBuffers( device.device_, &commandBufferAllocateInfo, render.cmdBuffer_ );
-    assert( result == VK_SUCCESS );
-
-    for( int bufferIndex = 0; bufferIndex < swapchain.swapchainLength_; ++bufferIndex )
-    {
-        VkCommandBufferBeginInfo commandBufferBeginInfo;
-        commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        commandBufferBeginInfo.pNext = nullptr;
-        commandBufferBeginInfo.flags = 0;
-        commandBufferBeginInfo.pInheritanceInfo = nullptr;
-        result = vkBeginCommandBuffer( render.cmdBuffer_[bufferIndex], &commandBufferBeginInfo );
-        assert( result == VK_SUCCESS );
-
-        setImageLayout( render.cmdBuffer_[bufferIndex], swapchain.displayImages_[bufferIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT );
-
-        VkClearValue clearVals;
-        clearVals.color.float32[0] = 0.0f;
-        clearVals.color.float32[1] = 0.34f;
-        clearVals.color.float32[2] = 0.9f;
-        clearVals.color.float32[3] = 1.0f;
-
-        VkRenderPassBeginInfo renderPassBeginInfo;
-        renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        renderPassBeginInfo.pNext = nullptr;
-        renderPassBeginInfo.renderPass = render.renderPass_;
-        renderPassBeginInfo.framebuffer = swapchain.framebuffers_.at( bufferIndex );
-        renderPassBeginInfo.renderArea.offset = { .x=0, .y=0 };
-        renderPassBeginInfo.renderArea.extent = swapchain.displaySize_;
-        renderPassBeginInfo.clearValueCount = 1;
-        renderPassBeginInfo.pClearValues = &clearVals;
-        vkCmdBeginRenderPass( render.cmdBuffer_[bufferIndex], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE );
-
-        vkCmdBindPipeline( render.cmdBuffer_[bufferIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, gfxPipeline.pipeline_ );
-
-        VkDeviceSize offset = 0;
-        vkCmdBindVertexBuffers( render.cmdBuffer_[bufferIndex], 0, 1, &buffers.vertexBuf_, &offset );
-
-        vkCmdDraw( render.cmdBuffer_[bufferIndex], 3, 1, 0, 0 );
-
-        vkCmdEndRenderPass( render.cmdBuffer_[bufferIndex] );
-
-        result = vkEndCommandBuffer( render.cmdBuffer_[bufferIndex] );
-        assert( result == VK_SUCCESS );
-    }
-
-    VkFenceCreateInfo fenceCreateInfo;
-    fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fenceCreateInfo.pNext = nullptr;
-    fenceCreateInfo.flags = 0;
-    result = vkCreateFence( device.device_, &fenceCreateInfo, nullptr, &render.fence_ );
-    assert( result == VK_SUCCESS );
-
-    VkSemaphoreCreateInfo semaphoreCreateInfo;
-    semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    semaphoreCreateInfo.pNext = nullptr;
-    semaphoreCreateInfo.flags = 0;
-    result = vkCreateSemaphore( device.device_, &semaphoreCreateInfo, nullptr, &render.semaphore_ );
-    assert( result == VK_SUCCESS );
+    CreateCommand();
 
     device.initialized_ = true;
 
