@@ -137,7 +137,7 @@ void CreateVulkanDevice( ANativeWindow* platformWindow, VkApplicationInfo* appIn
             break;
         }
     }
-    assert( queueFamilyIndex );
+    assert( queueFamilyIndex < queueFamilyCount );
     device.queueFamilyIndex_ = queueFamilyIndex;
 
     std::array<float, 1> priorities{ 1.f };
@@ -189,7 +189,7 @@ void CreateSwapChain( void )
             chosenFormat = it - surfaceFormats.begin();
         }
     }
-    assert( chosenFormat );
+    assert( chosenFormat < surfaceFormatCount );
 
     swapchain.displaySize_ = surfaceCapabilities.currentExtent;
     swapchain.displayFormat_ = surfaceFormats[chosenFormat].format;
@@ -421,7 +421,7 @@ void CreateGraphicsPipeline( void )
     // VkPipelineLayout : 파이프라인 내에서 디스크립터 세트 레이아웃의 순서를 관리
     // VkPipelineCache  : PCO. 저장된 파이프라인을 빠르게 검색하고 재사용하기 위한 매커니즘 제공 (중복 파이프라인을 피할 수 있음)
     // VkPipeline       : blend, depth/stencil test, primitive assembly, viewport 등의 하드웨어 설정 제어 기능 제공
-    memcpy( &gfxPipeline, 0, sizeof( gfxPipeline ) );
+    memset( &gfxPipeline, 0, sizeof( gfxPipeline ) );
 
     VkPipelineLayoutCreateInfo layoutCreateInfo; // layout: 데이터(주로 이미지)의 형식이나 종류를 정의한다.
     layoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -584,7 +584,7 @@ void CreateGraphicsPipeline( void )
 bool InitVulkan( android_app* app )
 {
     androidAppCtx = app;
-    if( InitVulkan() )
+    if( !InitVulkan() )
     {
         assert( false );
     }
@@ -729,19 +729,19 @@ bool VulkanDrawFrame( void )
     result = vkWaitForFences( device.device_, 1, &render.fence_, VK_TRUE, UINT64_MAX );
     assert( result == VK_SUCCESS );
 
-    printf( "drawing frames......" );
+    __android_log_print( ANDROID_LOG_DEBUG, "", "drawing frames......" );
 
+    VkResult presentResult;
     VkPresentInfoKHR presentInfo;
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     presentInfo.pNext = nullptr;
     presentInfo.waitSemaphoreCount = 0;
-    presentInfo.pWaitSemaphores = 0;
-    presentInfo.swapchainCount = swapchain.swapchainLength_;
+    presentInfo.pWaitSemaphores = nullptr;
+    presentInfo.swapchainCount = 1;
     presentInfo.pSwapchains = &swapchain.swapchain_;
     presentInfo.pImageIndices = &nextImage;
-    presentInfo.pResults = &result;
-    result = vkQueuePresentKHR( device.queue_, &presentInfo );
-    assert( result == VK_SUCCESS );
+    presentInfo.pResults = &presentResult;
+    vkQueuePresentKHR( device.queue_, &presentInfo );
 
     return true;
 }
