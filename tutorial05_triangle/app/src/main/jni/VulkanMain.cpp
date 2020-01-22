@@ -610,6 +610,83 @@ bool InitVulkan( android_app* app )
 
     CreateGraphicsPipeline();
 
+    VkCommandPoolCreateInfo commandPoolCreateInfo;
+    commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    commandPoolCreateInfo.pNext = nullptr;
+    commandPoolCreateInfo.flags = 0;
+    commandPoolCreateInfo.queueFamilyIndex = device.queueFamilyIndex_;
+    VkResult result = vkCreateCommandPool( device.device_, &commandPoolCreateInfo, nullptr, &render.cmdPool_ );
+    assert( result == VK_SUCCESS );
+
+    render.cmdBufferLen_ = swapchain.swapchainLength_;
+    render.cmdBuffer_ = new VkCommandBuffer[render.cmdBufferLen_];
+    VkCommandBufferAllocateInfo commandBufferAllocateInfo;
+    commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    commandBufferAllocateInfo.pNext = nullptr;
+    commandBufferAllocateInfo.commandPool = render.cmdPool_;
+    commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    commandBufferAllocateInfo.commandBufferCount = render.cmdBufferLen_;
+    result = vkAllocateCommandBuffers( device.device_, &commandBufferAllocateInfo, render.cmdBuffer_ );
+    assert( result == VK_SUCCESS );
+
+    for( int bufferIndex = 0; bufferIndex < swapchain.swapchainLength_; ++bufferIndex )
+    {
+        VkCommandBufferBeginInfo commandBufferBeginInfo;
+        commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        commandBufferBeginInfo.pNext = nullptr;
+        commandBufferBeginInfo.flags = 0;
+        commandBufferBeginInfo.pInheritanceInfo = nullptr;
+        result = vkBeginCommandBuffer( render.cmdBuffer_[bufferIndex], &commandBufferBeginInfo );
+        assert( result == VK_SUCCESS );
+
+        setImageLayout( render.cmdBuffer_[bufferIndex], swapchain.displayImages_[bufferIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT );
+
+        VkClearValue clearVals;
+        clearVals.color.float32[0] = 0.0f;
+        clearVals.color.float32[1] = 0.34f;
+        clearVals.color.float32[2] = 0.9f;
+        clearVals.color.float32[3] = 1.0f;
+
+        VkRenderPassBeginInfo renderPassBeginInfo;
+        renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        renderPassBeginInfo.pNext = nullptr;
+        renderPassBeginInfo.renderPass = render.renderPass_;
+        renderPassBeginInfo.framebuffer = swapchain.framebuffers_.at( bufferIndex );
+        renderPassBeginInfo.renderArea.offset = { .x=0, .y=0 };
+        renderPassBeginInfo.renderArea.extent = swapchain.displaySize_;
+        renderPassBeginInfo.clearValueCount = 1;
+        renderPassBeginInfo.pClearValues = &clearVals;
+        vkCmdBeginRenderPass( render.cmdBuffer_[bufferIndex], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE );
+
+        vkCmdBindPipeline( render.cmdBuffer_[bufferIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, gfxPipeline.pipeline_ );
+
+        VkDeviceSize offset = 0;
+        vkCmdBindVertexBuffers( render.cmdBuffer_[bufferIndex], 0, 1, &buffers.vertexBuf_, &offset );
+
+        vkCmdDraw( render.cmdBuffer_[bufferIndex], 3, 1, 0, 0 );
+
+        vkCmdEndRenderPass( render.cmdBuffer_[bufferIndex] );
+
+        result = vkEndCommandBuffer( render.cmdBuffer_[bufferIndex] );
+        assert( result == VK_SUCCESS );
+    }
+
+    VkFenceCreateInfo fenceCreateInfo;
+    fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fenceCreateInfo.pNext = nullptr;
+    fenceCreateInfo.flags = 0;
+    result = vkCreateFence( device.device_, &fenceCreateInfo, nullptr, &render.fence_ );
+    assert( result == VK_SUCCESS );
+
+    VkSemaphoreCreateInfo semaphoreCreateInfo;
+    semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    semaphoreCreateInfo.pNext = nullptr;
+    semaphoreCreateInfo.flags = 0;
+    result = vkCreateSemaphore( device.device_, &semaphoreCreateInfo, nullptr, &render.semaphore_ );
+    assert( result == VK_SUCCESS );
+
+    device.initialized_ = true;
+
     return true;
 }
 
@@ -622,11 +699,104 @@ void DeleteVulkan( void )
 // Check if vulkan is ready to draw
 bool IsVulkanReady( void )
 {
-    return true;
+    return device.initialized_;
 }
 
 // Ask Vulkan to Render a frame
 bool VulkanDrawFrame( void )
 {
+    uint32_t nextImage;
+    VkResult result = vkAcquireNextImageKHR( device.device_, swapchain.swapchain_, UINT64_MAX, render.semaphore_, render.fence_, &nextImage );
+    assert( result == VK_SUCCESS );
+
+    result = vkResetFences( device.device_, 1, &render.fence_ );
+    assert( result == VK_SUCCESS );
+
+    VkPipelineStageFlags waitStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    VkSubmitInfo submitInfo;
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.pNext = nullptr;
+    submitInfo.waitSemaphoreCount = 1;
+    submitInfo.pWaitSemaphores = &render.semaphore_;
+    submitInfo.pWaitDstStageMask = &waitStageMask;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &render.cmdBuffer_[nextImage];
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = &render.semaphore_;
+    result = vkQueueSubmit( device.queue_, 1, &submitInfo, render.fence_ );
+    assert( result == VK_SUCCESS );
+
+    result = vkWaitForFences( device.device_, 1, &render.fence_, VK_TRUE, UINT64_MAX );
+    assert( result == VK_SUCCESS );
+
+    printf( "drawing frames......" );
+
+    VkPresentInfoKHR presentInfo;
+    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    presentInfo.pNext = nullptr;
+    presentInfo.waitSemaphoreCount = 0;
+    presentInfo.pWaitSemaphores = 0;
+    presentInfo.swapchainCount = swapchain.swapchainLength_;
+    presentInfo.pSwapchains = &swapchain.swapchain_;
+    presentInfo.pImageIndices = &nextImage;
+    presentInfo.pResults = &result;
+    result = vkQueuePresentKHR( device.queue_, &presentInfo );
+    assert( result == VK_SUCCESS );
+
     return true;
+}
+
+void setImageLayout( VkCommandBuffer cmdBuffer, VkImage image, VkImageLayout oldImageLayout, VkImageLayout newImageLayout, VkPipelineStageFlags srcStages, VkPipelineStageFlags destStages )
+{
+    VkImageMemoryBarrier imageMemoryBarrier = { .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, .pNext = NULL, .srcAccessMask = 0, .dstAccessMask = 0, .oldLayout = oldImageLayout, .newLayout = newImageLayout, .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .image = image, .subresourceRange =
+            { .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel = 0, .levelCount = 1, .baseArrayLayer = 0, .layerCount = 1, }, };
+
+    switch( oldImageLayout )
+    {
+        case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+            imageMemoryBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            break;
+
+        case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+            imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            break;
+
+        case VK_IMAGE_LAYOUT_PREINITIALIZED:
+            imageMemoryBarrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+            break;
+
+        default:
+            break;
+    }
+
+    switch( newImageLayout )
+    {
+        case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+            imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            break;
+
+        case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+            imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+            break;
+
+        case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+            imageMemoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            break;
+
+        case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+            imageMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            break;
+
+        case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+            imageMemoryBarrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            break;
+        case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
+            imageMemoryBarrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+            break;
+
+        default:
+            break;
+    }
+
+    vkCmdPipelineBarrier( cmdBuffer, srcStages, destStages, 0, 0, NULL, 0, NULL, 1, &imageMemoryBarrier );
 }
