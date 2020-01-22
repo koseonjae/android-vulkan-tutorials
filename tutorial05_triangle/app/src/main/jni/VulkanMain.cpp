@@ -340,11 +340,16 @@ void CreateFramebuffers( VkRenderPass renderPass, VkImageView depthView = VK_NUL
     }
 }
 
-// GPU가 가진 메모리 타입중에, 필요로하는 메모리 특성을 모두 가지고 있는 메모리 타입의 index를 반환한다.
-// VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT : 이 타입으로 할당된 메모리는 vkMapMemory 를 통해 host가 접근 가능하다.
-// VK_MEMORY_PROPERTY_HOST_COHERENT_BIT: host와 device가 밀착된 메모리(호스트게 메모리에 쓴 글을 flush하지 않아도 device가 바로 읽을 수 있고, device가 메모리에 쓴 글도 호스트에게 visible함)
 uint32_t getMemoryTypeIndex( int memoryTypeBits, VkFlags requirementMask )
 {
+    // GPU가 가진 메모리 타입중에, 필요로하는 메모리 특성을 모두 가지고 있는 메모리 타입의 index를 반환한다.
+    // requirementMask                      : 필요한 메모리 특성을 flag로 전달
+
+    // VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT  : 이 타입으로 할당된 메모리는 vkMapMemory를 통해 host가 접근 가능하다.
+    // VK_MEMORY_PROPERTY_HOST_COHERENT_BIT : host와 device가 밀착된 메모리
+    //                                      : 호스트게 메모리에 쓴 글을 flush하지 않아도 device가 바로 읽을 수 있고
+    //                                      : device가 메모리에 쓴 글도 호스트에게 visible함
+
     VkPhysicalDeviceMemoryProperties memoryProperties;
     vkGetPhysicalDeviceMemoryProperties( device.physicalDevice_, &memoryProperties ); // GPU가 가지고 있는 메모리 타입을 가져온다.
     for( uint32_t i = 0; i < VK_MAX_MEMORY_TYPES; ++i )
@@ -405,7 +410,8 @@ enum ShaderType
 
 VkResult loadShaderFromFile( const char* filePath, VkShaderModule* shaderOut, ShaderType type )
 {
-    // Read the file
+    // VkShaderModule   : shader source를 통해 shader module 생성
+
     assert( androidAppCtx );
     AAsset* file = AAssetManager_open( androidAppCtx->activity->assetManager, filePath, AASSET_MODE_BUFFER );
     size_t fileLength = AAsset_getLength( file );
