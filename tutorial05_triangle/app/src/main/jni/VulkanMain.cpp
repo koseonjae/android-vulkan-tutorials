@@ -764,6 +764,11 @@ bool IsVulkanReady( void )
 // Ask Vulkan to Render a frame
 bool VulkanDrawFrame( void )
 {
+    // fence        : queue, host 사이의 동기화 객체
+    //              : vkQueueSubmit     : fence가 signaled 된다.
+    //              : vkWaitForFence    : fence가 signaled가 될 때 까지 기다린다.
+    //              : vkResetFences     : fence가 unsignaled 된다.
+    // semephore    : queue 사이의 동기화 객체
     uint32_t nextImage;
     VkResult result = vkAcquireNextImageKHR( device.device_, swapchain.swapchain_, UINT64_MAX, render.semaphore_, render.fence_, &nextImage );
     assert( result == VK_SUCCESS );
