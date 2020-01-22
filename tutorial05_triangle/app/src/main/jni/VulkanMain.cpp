@@ -438,13 +438,12 @@ VkResult loadShaderFromFile( const char* filePath, VkShaderModule* shaderOut, Sh
 
 void CreateGraphicsPipeline( void )
 {
-    // 쉐이더 리소스         : 리소스(버퍼와 이미지 뷰)를 쉐이더와 연결시
-    // 디스크립터 세트 레이아웃 : 쉐이더 리소스(버퍼와 이미지 뷰에 연결되는 변수)를 관리
-    // 버퍼와 이미지뷰 => 쉐이더 리소스를 통해 쉐이더에 간접적으로 연결된다.
+    // shader resource          : 리소스(버퍼와 이미지 뷰)와 쉐이더를 연결하는데 필요한 변수
+    // Descriptor Set Layout    : 쉐이더 리소스를 관리
+    // VkPipelineLayout         : 파이프라인 내에서 디스크립터 세트 레이아웃의 순서를 관리
+    // VkPipelineCache          : PCO. 저장된 파이프라인을 빠르게 검색하고 재사용하기 위한 매커니즘 제공 (중복 파이프라인 생성을 피할 수 있음)
+    // VkPipeline               : blend, depth/stencil test, primitive assembly, viewport 등의 하드웨어 설정 제어 기능 제공
 
-    // VkPipelineLayout : 파이프라인 내에서 디스크립터 세트 레이아웃의 순서를 관리
-    // VkPipelineCache  : PCO. 저장된 파이프라인을 빠르게 검색하고 재사용하기 위한 매커니즘 제공 (중복 파이프라인을 피할 수 있음)
-    // VkPipeline       : blend, depth/stencil test, primitive assembly, viewport 등의 하드웨어 설정 제어 기능 제공
     memset( &gfxPipeline, 0, sizeof( gfxPipeline ) );
 
     VkPipelineLayoutCreateInfo layoutCreateInfo; // layout: 데이터(주로 이미지)의 형식이나 종류를 정의한다.
