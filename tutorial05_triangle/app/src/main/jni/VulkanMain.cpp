@@ -660,7 +660,13 @@ void CreateCommand( void )
         result = vkBeginCommandBuffer( render.cmdBuffer_[i], &commandBufferBeginInfo );
         assert( result == VK_SUCCESS );
 
-        setImageLayout( render.cmdBuffer_[i], swapchain.displayImages_[i], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT );
+        setImageLayout( render.cmdBuffer_[i], // layout 전환을 수행할 커맨드 버퍼
+                        swapchain.displayImages_[i], // 전환 될 이미지
+                        VK_IMAGE_LAYOUT_UNDEFINED, // 현재 layout
+                        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, // 바꿀 layout
+                        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, // src stages
+                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT // dst stages
+        );
 
         VkClearValue clearVals;
         clearVals.color.float32[0] = 0.0f;
@@ -769,6 +775,7 @@ bool VulkanDrawFrame( void )
     //              : vkWaitForFence    : fence가 signaled가 될 때 까지 기다린다.
     //              : vkResetFences     : fence가 unsignaled 된다.
     // semephore    : queue 사이의 동기화 객체
+
     uint32_t nextImage;
     VkResult result = vkAcquireNextImageKHR( device.device_, swapchain.swapchain_, UINT64_MAX, render.semaphore_, render.fence_, &nextImage );
     assert( result == VK_SUCCESS );
@@ -810,8 +817,38 @@ bool VulkanDrawFrame( void )
     return true;
 }
 
-void setImageLayout( VkCommandBuffer cmdBuffer, VkImage image, VkImageLayout oldImageLayout, VkImageLayout newImageLayout, VkPipelineStageFlags srcStages, VkPipelineStageFlags destStages )
+// oldImageLayout에서 newImageLayout으로의 전환이 srcStages와 destStages 사이에 일어나야 한다.
+// => srcStages가 모두 끝나고, destStages가 시작되기 전에 전환이 완료되어야 한다.
+void setImageLayout( VkCommandBuffer cmdBuffer,         // render.cmdBuffer_[i]
+                     VkImage image,                     // swapchain.displayImages_[i]
+                     VkImageLayout oldImageLayout,      // VK_IMAGE_LAYOUT_UNDEFINED
+                     VkImageLayout newImageLayout,      // VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+                     VkPipelineStageFlags srcStages,    // VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT
+                     VkPipelineStageFlags destStages    // VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+)
 {
+    // https://vulkan.lunarg.com/doc/view/1.0.26.0/linux/vkspec.chunked/ch06s05.html
+    // https://gpuopen.com/vulkan-barriers-explained/
+    // http://cpp-rendering.io/barriers-vulkan-not-difficult/
+
+    // image layout                     : GPU의 이미지 접근방식
+    //                                  : 주어진 용도 특성에 맞춰 구현에 지정한 방식으로, 메모리 내용을 액세스 할 수 있게 한다.
+    //                                  : 이미지에 사용할 수 있는 일반 레이아웃(VK_IMAGE_LAYOUT_GENERAL)이 있지만, 이 레이아웃 하나만으로는 적절하지 않을 때가 있다.
+
+    // image layout transition
+    // optimal layout <-> linear layout : 최적 레이아웃 <-> 선형 레이아웃 상호 전환(transition) 기능 필요 (host는 최적 레이아웃 메모리 직접 액세스 불가)
+    //                                  : 메모리 장벽을 사용해 레이아웃 전환이 가능하다
+    //                                  : CPU는 이미지 데이터를 선형 레이아웃 버퍼에 저장 후, 최적 레이아웃으로 변경 할 수 있음 (GPU가 더 효율적으로 읽을 수 있도록)
+
+    // memory barrier   : 데이터 읽기와 쓰기를 동기화 (메모리장벽 전후에 지정한 작업이 동기화 되도록 보장)
+    //                  : global memory barrier (VkMemoryBarrier)       : 모든 종류의 실행 메모리 개체에 적용
+    //                  : buffer memory barrier (VkBufferMemoryBarrier) : 지정된 버퍼 개체의 특정 범위에 적용
+    //                  : image memory barrier  (VkImageMemoryBarrier)  : 지정된 이미지 개체의 특정 이미지 하위 리소스 범위를 통해 다른 메모리 엑세스 유형에 적용
+    //                  : vkCmdPipelineBarrier를 통해 메모리 장벽을 삽입한다.
+
+    // srcAccessMask    : 어떤 작업에 대한 완료를 보장할지 정한다
+    // dstAccessMask    : 변경된 layout이 어떤 리소스로 부터 접근 가능할지 정한다.
+
     VkImageMemoryBarrier imageMemoryBarrier;
     imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     imageMemoryBarrier.pNext = nullptr;
@@ -819,8 +856,8 @@ void setImageLayout( VkCommandBuffer cmdBuffer, VkImage image, VkImageLayout old
     imageMemoryBarrier.newLayout = newImageLayout;
     imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    imageMemoryBarrier.image = image;
-    imageMemoryBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    imageMemoryBarrier.image = image;                                                               // 1. 지정된 이미지 개체의
+    imageMemoryBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;                     // 2. 특정 이미지 하위 리소스 범위를 통해
     imageMemoryBarrier.subresourceRange.baseMipLevel = 0;
     imageMemoryBarrier.subresourceRange.levelCount = 1;
     imageMemoryBarrier.subresourceRange.baseArrayLayer = 0;
@@ -828,42 +865,52 @@ void setImageLayout( VkCommandBuffer cmdBuffer, VkImage image, VkImageLayout old
 
     switch( oldImageLayout )
     {
-        case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-            imageMemoryBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL: // image의 원래의 접근 용도가 컬러 첨부 였다면
+            imageMemoryBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT; // transition이 일어나기 전에 color에 모든 write가 끝남을 보장해야 한다.
             break;
-        case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-            imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL: // 이미지의 원래 접근 용도가 dst_optimal이었다면 (예를들어 copy)
+            imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; // transfer_write가 모두 끝나고 transition이 되어야 함을 보장해야 한다.
             break;
-        case VK_IMAGE_LAYOUT_PREINITIALIZED:
-            imageMemoryBarrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+        case VK_IMAGE_LAYOUT_PREINITIALIZED: // 미리 초기화된 레이아웃 이었다면,
+            imageMemoryBarrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT; // 앱쪽에서 이미지에 write한 명령이 끝나고 transition이 되어야 함을 보장해야 한다.
             break;
         default:
             break;
     }
 
-    switch( newImageLayout )
+    switch( newImageLayout )                                                                        // 3. 다른 메모리 엑세스 유형에 적용
     {
-        case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-            imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL: // 전환된 이미지의 목적이 transfer_dst_optimal이라면,
+            imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; // tranfer_write 목적으로만 전환된 이미지에 접근 가능하다
             break;
-        case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
-            imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL: // 전환된 이미지의 목적이 transfer_src_optimal이라면,
+            imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT; // transfer_read 목적으로만 전환된 이미지에 접근 가능하다
             break;
-        case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-            imageMemoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL: // 쉐이더에서 읽으려는 목적이라면
+            imageMemoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT; // 쉐이더에서 읽을때만 접근 가능
             break;
-        case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-            imageMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL: // 컬러 첨부가 목적이라면
+            imageMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT; // 컬러 첨부 write 할때만 이미지에 접근 가능
             break;
         case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
             imageMemoryBarrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
             break;
-        case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
-            imageMemoryBarrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+        case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR: // present하는게 전환된 이미지의 목적이라면
+            imageMemoryBarrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT; // memory_read를 위해서만 이미지에 접근이 가능하다
             break;
         default:
             break;
     }
 
-    vkCmdPipelineBarrier( cmdBuffer, srcStages, destStages, 0, 0, nullptr, 0, nullptr, 1, &imageMemoryBarrier );
+    vkCmdPipelineBarrier( cmdBuffer,          // 메모리 장벽이 정의된 커맨드 버퍼
+                          srcStages,          // 장벽 구현 전에 수행이 완료돼야 하는 파이프라인 스테이지
+                          destStages,         // 장벽 이전의 명령이 모두 수행되기 전까지는 시작하면 안되는 파이프라인 스테이
+                          0,                  // 스크린 공간 지역성(locality)가 있는지 알려준다.
+                          0,                  // global memory barrier count
+                          nullptr,            // global memory barriers
+                          0,                  // buffer memory barrier count
+                          nullptr,            // buffer memory barriers
+                          1,                  // image memory barrier count
+                          &imageMemoryBarrier // image memory barriers
+    );
 }
