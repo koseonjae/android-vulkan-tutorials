@@ -104,23 +104,22 @@ void CreateVulkanDevice( ANativeWindow* platformWindow, VkApplicationInfo* appIn
     VkInstanceCreateInfo instanceCreateInfo;
     instanceCreateInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     instanceCreateInfo.pNext = nullptr;
+    instanceCreateInfo.flags = 0;
     instanceCreateInfo.pApplicationInfo = appInfo;
-    instanceCreateInfo.enabledExtensionCount = instance_extensions.size();
-    instanceCreateInfo.ppEnabledExtensionNames = instance_extensions.data();
     instanceCreateInfo.enabledLayerCount = 0;
     instanceCreateInfo.ppEnabledLayerNames = nullptr;
-    VkResult result = vkCreateInstance( &instanceCreateInfo, nullptr, &device.instance_ );
-    assert( result == VK_SUCCESS );
+    instanceCreateInfo.enabledExtensionCount = instance_extensions.size();
+    instanceCreateInfo.ppEnabledExtensionNames = instance_extensions.data();
+    vkCreateInstance( &instanceCreateInfo, nullptr, &device.instance_ );
 
-    VkAndroidSurfaceCreateInfoKHR surfaceCreateInfo;
-    surfaceCreateInfo.sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR;
-    surfaceCreateInfo.pNext = nullptr;
-    surfaceCreateInfo.window = platformWindow;
-    surfaceCreateInfo.flags = 0;
-    result = vkCreateAndroidSurfaceKHR( device.instance_, &surfaceCreateInfo, nullptr, &device.surface_ );
-    assert( result == VK_SUCCESS );
+    VkAndroidSurfaceCreateInfoKHR androidSurfaceCreateInfo;
+    androidSurfaceCreateInfo.sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR;
+    androidSurfaceCreateInfo.pNext = nullptr;
+    androidSurfaceCreateInfo.flags = 0;
+    androidSurfaceCreateInfo.window = platformWindow;
+    vkCreateAndroidSurfaceKHR( device.instance_, &androidSurfaceCreateInfo, nullptr, &device.surface_ );
 
-    uint32_t gpuCount{ 0 };
+    uint32_t gpuCount;
     std::vector<VkPhysicalDevice> gpus;
     vkEnumeratePhysicalDevices( device.instance_, &gpuCount, nullptr );
     gpus.resize( gpuCount );
@@ -134,41 +133,38 @@ void CreateVulkanDevice( ANativeWindow* platformWindow, VkApplicationInfo* appIn
     vkGetPhysicalDeviceQueueFamilyProperties( device.physicalDevice_, &queueFamilyCount, queueFamilyProperties.data() );
 
     uint32_t queueFamilyIndex{ 0 };
-    for( auto it = queueFamilyProperties.begin(); it != queueFamilyProperties.end(); ++it )
+    for( auto it = queueFamilyProperties.begin(); it != queueFamilyProperties.end(); ++it, queueFamilyIndex++ )
     {
         if( it->queueFlags & VK_QUEUE_GRAPHICS_BIT )
         {
-            queueFamilyIndex = it - queueFamilyProperties.begin();
+            device.queueFamilyIndex_ = it - queueFamilyProperties.begin();
             break;
         }
     }
-    assert( queueFamilyIndex < queueFamilyCount );
-    device.queueFamilyIndex_ = queueFamilyIndex;
+    assert( queueFamilyIndex < queueFamilyProperties.size() );
 
     std::array<float, 1> priorities{ 1.f };
-    VkDeviceQueueCreateInfo queueCreateInfo;
-    queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queueCreateInfo.pNext = nullptr;
-    queueCreateInfo.flags = 0;
-    queueCreateInfo.pQueuePriorities = priorities.data();
-    queueCreateInfo.queueFamilyIndex = queueFamilyIndex; // graphics queue property를 가진 queue family를 가지고 device를 초기화 했음 -> graphics용 device 초기화
-    queueCreateInfo.queueCount = 1; // set of queue중 하나의 queue만을 사
+    VkDeviceQueueCreateInfo deviceQueueCreateInfo;
+    deviceQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    deviceQueueCreateInfo.pNext = nullptr;
+    deviceQueueCreateInfo.flags = 0;
+    deviceQueueCreateInfo.queueFamilyIndex = device.queueFamilyIndex_;
+    deviceQueueCreateInfo.queueCount = priorities.size();
+    deviceQueueCreateInfo.pQueuePriorities = priorities.data();
 
     VkDeviceCreateInfo deviceCreateInfo;
     deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     deviceCreateInfo.pNext = nullptr;
-    deviceCreateInfo.ppEnabledExtensionNames = device_extensions.data();
-    deviceCreateInfo.enabledExtensionCount = device_extensions.size();
-    deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
-    deviceCreateInfo.queueCreateInfoCount = 1;
     deviceCreateInfo.flags = 0;
-    deviceCreateInfo.ppEnabledLayerNames = nullptr;
+    deviceCreateInfo.queueCreateInfoCount = 1;
+    deviceCreateInfo.pQueueCreateInfos = &deviceQueueCreateInfo;
     deviceCreateInfo.enabledLayerCount = 0;
+    deviceCreateInfo.ppEnabledLayerNames = nullptr;
+    deviceCreateInfo.enabledExtensionCount = device_extensions.size();
+    deviceCreateInfo.ppEnabledExtensionNames = device_extensions.data();
     deviceCreateInfo.pEnabledFeatures = nullptr;
-    result = vkCreateDevice( device.physicalDevice_, &deviceCreateInfo, nullptr, &device.device_ );
-    assert( result == VK_SUCCESS );
-
-    vkGetDeviceQueue( device.device_, queueFamilyIndex, 0, &device.queue_ ); // queue family중에서 사용하는 하나의 queue를 얻어온다.
+    vkCreateDevice( device.physicalDevice_, &deviceCreateInfo, nullptr, &device.device_ );
+    vkGetDeviceQueue( device.device_, device.queueFamilyIndex_, 0, &device.queue_ );
 }
 
 void CreateSwapChain( void )
