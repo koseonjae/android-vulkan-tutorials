@@ -173,54 +173,56 @@ void CreateSwapChain( void )
     // GPU가 android surface에게 지원하는 format을 가져온다. => VK_FORMAT_R8G8B8_UNORM format에 대한 index를 얻는다.
     // => capability와 format 정보를 통해 swapchain을 생성한다
 
-    VkSurfaceCapabilitiesKHR surfaceCapabilities;
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR( device.physicalDevice_, device.surface_, &surfaceCapabilities );
+    uint32_t formatCnt{ 0 };
+    std::vector<VkSurfaceFormatKHR> formats;
+    VkResult result = vkGetPhysicalDeviceSurfaceFormatsKHR( device.physicalDevice_, device.surface_, &formatCnt, nullptr );
+    assert( VK_SUCCESS == result );
 
-    uint32_t surfaceFormatCount{ 0 };
-    std::vector<VkSurfaceFormatKHR> surfaceFormats;
-    vkGetPhysicalDeviceSurfaceFormatsKHR( device.physicalDevice_, device.surface_, &surfaceFormatCount, nullptr );
-    surfaceFormats.resize( surfaceFormatCount );
-    vkGetPhysicalDeviceSurfaceFormatsKHR( device.physicalDevice_, device.surface_, &surfaceFormatCount, surfaceFormats.data() );
+    formats.resize( formatCnt );
 
-    uint32_t chosenFormat{ 0 };
-    for( auto it = surfaceFormats.begin(); it != surfaceFormats.end(); ++it )
+    result = vkGetPhysicalDeviceSurfaceFormatsKHR( device.physicalDevice_, device.surface_, &formatCnt, formats.data() );
+    assert( VK_SUCCESS == result );
+
+    uint32_t formatIndex{ 0 };
+    for( formatIndex = 0; formatIndex < formatCnt; ++formatIndex )
     {
-        if( it->format == VK_FORMAT_R8G8B8_UNORM ) // 24BIT RGB unsigned normalized
+        if( formats[formatIndex].format == VK_FORMAT_R8G8B8A8_UNORM )
         {
-            chosenFormat = it - surfaceFormats.begin();
+            break;
         }
     }
-    assert( chosenFormat < surfaceFormatCount );
+    assert( formatIndex < formatCnt );
+
+    VkSurfaceCapabilitiesKHR surfaceCapabilities;
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR( device.physicalDevice_, device.surface_, &surfaceCapabilities );
+    assert( surfaceCapabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR );
+    assert( surfaceCapabilities.supportedUsageFlags & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT );
+    assert( surfaceCapabilities.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR );
 
     swapchain.displaySize_ = surfaceCapabilities.currentExtent;
-    swapchain.displayFormat_ = surfaceFormats[chosenFormat].format;
-
-    assert( surfaceCapabilities.supportedCompositeAlpha | VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR ); // TODO: PR duplicate logic
+    swapchain.displayFormat_ = formats.at( formatIndex ).format;
 
     VkSwapchainCreateInfoKHR swapchainCreateInfo;
     swapchainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
     swapchainCreateInfo.pNext = nullptr;
     swapchainCreateInfo.flags = 0;
-    swapchainCreateInfo.surface = device.surface_; // swapchain이 이미지를 보여줄 surface
+    swapchainCreateInfo.surface = device.surface_;
     swapchainCreateInfo.minImageCount = surfaceCapabilities.minImageCount;
-    swapchainCreateInfo.imageFormat = surfaceFormats[chosenFormat].format;
-    swapchainCreateInfo.imageColorSpace = surfaceFormats[chosenFormat].colorSpace;
+    swapchainCreateInfo.imageFormat = formats.at( formatIndex ).format;
+    swapchainCreateInfo.imageColorSpace = formats.at( formatIndex ).colorSpace;
     swapchainCreateInfo.imageExtent = surfaceCapabilities.currentExtent;
-    swapchainCreateInfo.imageArrayLayers = 1; // stereo에서 view의 수 (3D가 아닌 경우는 1)
-    swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // swapchain image의 usage
-    swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE; // queue faily에서 동시 접근 가능 여부
+    swapchainCreateInfo.imageArrayLayers = 1;
+    swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     swapchainCreateInfo.queueFamilyIndexCount = 1;
-    swapchainCreateInfo.pQueueFamilyIndices = &device.queueFamilyIndex_; // concurrent 모드이면 여러개의 indices를 전달해야할듯
-    swapchainCreateInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR; // present전에 수행할 transform
-    swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR; // 다른 surface와 혼합될때의 mode
-    swapchainCreateInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR; // present requests와 큐잉에 대한 정책
-    swapchainCreateInfo.clipped = VK_FALSE; // 보이지않는 부분에 대한 rendering operation을 discard 할지
-    swapchainCreateInfo.oldSwapchain = VK_NULL_HANDLE; //  VK_NULL_HANDLE or 현재 surface에 연결된 swapchain (리소스 재사용을 돕는다)
-    VkResult result = vkCreateSwapchainKHR( device.device_, &swapchainCreateInfo, nullptr, &swapchain.swapchain_ );
+    swapchainCreateInfo.pQueueFamilyIndices = &device.queueFamilyIndex_;
+    swapchainCreateInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+    swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
+    swapchainCreateInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+    swapchainCreateInfo.clipped = VK_FALSE;
+    swapchainCreateInfo.oldSwapchain = VK_NULL_HANDLE;
+    result = vkCreateSwapchainKHR( device.device_, &swapchainCreateInfo, nullptr, &swapchain.swapchain_ );
     assert( result == VK_SUCCESS );
-
-    swapchain.displayImages_.resize( surfaceCapabilities.minImageCount );
-    vkGetSwapchainImagesKHR( device.device_, swapchain.swapchain_, &swapchain.swapchainLength_, nullptr );
 }
 
 void CreateRenderPass( void )
@@ -300,7 +302,12 @@ void CreateFramebuffers( VkRenderPass renderPass, VkImageView depthView = VK_NUL
     // Swapchain Image  : 스왑 체인 이미지는 드라이버가 소유권을 가지고 있으며 할당, 해제할 수 없다.
     //                  : 단지 acquire & present operation 할때 잠시 빌려서 쓰는것 뿐임
 
-    VkResult result = vkGetSwapchainImagesKHR( device.device_, swapchain.swapchain_, &swapchain.swapchainLength_, swapchain.displayImages_.data() );
+    VkResult result = vkGetSwapchainImagesKHR( device.device_, swapchain.swapchain_, &swapchain.swapchainLength_, nullptr );
+    assert( result == VK_SUCCESS );
+
+    swapchain.displayImages_.resize( swapchain.swapchainLength_ );
+
+    result = vkGetSwapchainImagesKHR( device.device_, swapchain.swapchain_, &swapchain.swapchainLength_, swapchain.displayImages_.data() );
     assert( result == VK_SUCCESS );
 
     swapchain.displayViews_.resize( swapchain.swapchainLength_ );
