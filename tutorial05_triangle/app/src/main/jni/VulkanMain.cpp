@@ -369,7 +369,7 @@ void CreateBuffers( void )
     // VkDeviceMemory       : MemoryRequirements와 allocationInfo를 통해 device memory 객체를 생성한다.
     //                      : cpu voide pointer와 mapping하여 cpu에서 VkBuffer 메모리 write 할 수 있게 한다.
 
-    std::vector<float> vertices{ -1, 1, 0, 0, -1, 0, 1, 1, 0 };
+    std::vector<float> vertices{ -1, -1, 0, 1, -1, 0, 0, 1, 0 };
 
     VkBufferCreateInfo bufferCreateInfo;
     bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -630,72 +630,59 @@ void CreateCommand( void )
     VkCommandPoolCreateInfo commandPoolCreateInfo;
     commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     commandPoolCreateInfo.pNext = nullptr;
-    commandPoolCreateInfo.flags = 0;
+    commandPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     commandPoolCreateInfo.queueFamilyIndex = device.queueFamilyIndex_;
     VkResult result = vkCreateCommandPool( device.device_, &commandPoolCreateInfo, nullptr, &render.cmdPool_ );
-    assert( result == VK_SUCCESS );
+    assert( VK_SUCCESS == result );
 
     render.cmdBufferLen_ = swapchain.swapchainLength_;
     render.cmdBuffer_ = new VkCommandBuffer[render.cmdBufferLen_];
+
     VkCommandBufferAllocateInfo commandBufferAllocateInfo;
     commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     commandBufferAllocateInfo.pNext = nullptr;
     commandBufferAllocateInfo.commandPool = render.cmdPool_;
     commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     commandBufferAllocateInfo.commandBufferCount = render.cmdBufferLen_;
-    result = vkAllocateCommandBuffers( device.device_, &commandBufferAllocateInfo, render.cmdBuffer_ );
-    assert( result == VK_SUCCESS );
+    vkAllocateCommandBuffers( device.device_, &commandBufferAllocateInfo, render.cmdBuffer_ );
 
-    for( int i = 0; i < swapchain.swapchainLength_; ++i ) // 각 스왑체인 색상 이미지에 커맨드 버퍼 개체를 만든다.
+    VkClearValue clearVals;
+    clearVals.color.float32[0] = 0;
+    clearVals.color.float32[1] = 0;
+    clearVals.color.float32[2] = 1;
+    clearVals.color.float32[3] = 1;
+
+    for( uint32_t i = 0; i < render.cmdBufferLen_; ++i )
     {
         VkCommandBufferBeginInfo commandBufferBeginInfo;
         commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         commandBufferBeginInfo.pNext = nullptr;
         commandBufferBeginInfo.flags = 0;
         commandBufferBeginInfo.pInheritanceInfo = nullptr;
-        result = vkBeginCommandBuffer( render.cmdBuffer_[i], &commandBufferBeginInfo );
-        assert( result == VK_SUCCESS );
-
-        setImageLayout( render.cmdBuffer_[i], // layout 전환을 수행할 커맨드 버퍼
-                        swapchain.displayImages_[i], // 전환 될 이미지
-                        VK_IMAGE_LAYOUT_UNDEFINED, // 현재 layout
-                        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, // 바꿀 layout
-                        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, // src stages
-                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT // dst stages
-        );
-
-        VkClearValue clearVals;
-        clearVals.color.float32[0] = 0.0f;
-        clearVals.color.float32[1] = 0.34f;
-        clearVals.color.float32[2] = 0.9f;
-        clearVals.color.float32[3] = 1.0f;
+        vkBeginCommandBuffer( render.cmdBuffer_[i], &commandBufferBeginInfo );
 
         VkRenderPassBeginInfo renderPassBeginInfo;
         renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         renderPassBeginInfo.pNext = nullptr;
         renderPassBeginInfo.renderPass = render.renderPass_;
         renderPassBeginInfo.framebuffer = swapchain.framebuffers_.at( i );
-        renderPassBeginInfo.renderArea.offset = { .x=0, .y=0 };
         renderPassBeginInfo.renderArea.extent = swapchain.displaySize_;
+        renderPassBeginInfo.renderArea.offset.x = 0;
+        renderPassBeginInfo.renderArea.offset.y = 0;
         renderPassBeginInfo.clearValueCount = 1;
         renderPassBeginInfo.pClearValues = &clearVals;
         vkCmdBeginRenderPass( render.cmdBuffer_[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE );
 
-        // 0번 subpass에 대한 call
         vkCmdBindPipeline( render.cmdBuffer_[i], VK_PIPELINE_BIND_POINT_GRAPHICS, gfxPipeline.pipeline_ );
-        VkDeviceSize offset = 0;
-        vkCmdBindVertexBuffers( render.cmdBuffer_[i], 0, 1, &buffers.vertexBuf_, &offset );
-        vkCmdDraw( render.cmdBuffer_[i], 3, 1, 0, 0 );
 
-        // 여러개의 서브패스가 있을 경우
-        // vkCmdNextSubpass(); // 1번 subpass에 대한 call로 넘어감
-        // vkCmdBindPipeline();
-        // vkCmdDraw();
+        VkDeviceSize offset{ 0 };
+        vkCmdBindVertexBuffers( render.cmdBuffer_[i], 0, 3, &buffers.vertexBuf_, &offset );
+
+        vkCmdDraw( render.cmdBuffer_[i], 3, 1, 0, 0 );
 
         vkCmdEndRenderPass( render.cmdBuffer_[i] );
 
-        result = vkEndCommandBuffer( render.cmdBuffer_[i] );
-        assert( result == VK_SUCCESS );
+        vkEndCommandBuffer( render.cmdBuffer_[i] );
     }
 
     VkFenceCreateInfo fenceCreateInfo;
@@ -703,14 +690,16 @@ void CreateCommand( void )
     fenceCreateInfo.pNext = nullptr;
     fenceCreateInfo.flags = 0;
     result = vkCreateFence( device.device_, &fenceCreateInfo, nullptr, &render.fence_ );
-    assert( result == VK_SUCCESS );
+    assert( VK_SUCCESS == result );
 
     VkSemaphoreCreateInfo semaphoreCreateInfo;
     semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
     semaphoreCreateInfo.pNext = nullptr;
     semaphoreCreateInfo.flags = 0;
     result = vkCreateSemaphore( device.device_, &semaphoreCreateInfo, nullptr, &render.semaphore_ );
-    assert( result == VK_SUCCESS );
+    assert( VK_SUCCESS == result );
+
+    device.initialized_ = true;
 }
 
 // Initialize vulkan device context
