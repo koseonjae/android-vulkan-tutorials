@@ -761,12 +761,12 @@ bool VulkanDrawFrame( void )
     //              : vkResetFences     : fence가 unsignaled 된다.
     // semephore    : queue 사이의 동기화 객체
 
-    uint32_t nextImage;
-    VkResult result = vkAcquireNextImageKHR( device.device_, swapchain.swapchain_, UINT64_MAX, render.semaphore_, render.fence_, &nextImage );
-    assert( result == VK_SUCCESS );
+    uint32_t index{ 0 };
+    VkResult result = vkAcquireNextImageKHR( device.device_, swapchain.swapchain_, UINT64_MAX, render.semaphore_, render.fence_, &index );
+    assert( VK_SUCCESS == result );
 
     result = vkResetFences( device.device_, 1, &render.fence_ );
-    assert( result == VK_SUCCESS );
+    assert( VK_SUCCESS == result );
 
     VkPipelineStageFlags waitStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     VkSubmitInfo submitInfo;
@@ -776,16 +776,14 @@ bool VulkanDrawFrame( void )
     submitInfo.pWaitSemaphores = &render.semaphore_;
     submitInfo.pWaitDstStageMask = &waitStageMask;
     submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &render.cmdBuffer_[nextImage];
-    submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = &render.semaphore_;
+    submitInfo.pCommandBuffers = &render.cmdBuffer_[index];
+    submitInfo.signalSemaphoreCount = 0;
+    submitInfo.pSignalSemaphores = nullptr;
     result = vkQueueSubmit( device.queue_, 1, &submitInfo, render.fence_ );
-    assert( result == VK_SUCCESS );
+    assert( VK_SUCCESS == result );
 
     result = vkWaitForFences( device.device_, 1, &render.fence_, VK_TRUE, UINT64_MAX );
-    assert( result == VK_SUCCESS );
-
-    __android_log_print( ANDROID_LOG_DEBUG, "", "drawing frames......" );
+    assert( VK_SUCCESS == result );
 
     VkResult presentResult;
     VkPresentInfoKHR presentInfo;
@@ -795,9 +793,11 @@ bool VulkanDrawFrame( void )
     presentInfo.pWaitSemaphores = nullptr;
     presentInfo.swapchainCount = 1;
     presentInfo.pSwapchains = &swapchain.swapchain_;
-    presentInfo.pImageIndices = &nextImage;
+    presentInfo.pImageIndices = &index;
     presentInfo.pResults = &presentResult;
-    vkQueuePresentKHR( device.queue_, &presentInfo );
+    result = vkQueuePresentKHR( device.queue_, &presentInfo );
+    assert( VK_SUCCESS == result );
+    assert( VK_SUCCESS == presentResult );
 
     return true;
 }
