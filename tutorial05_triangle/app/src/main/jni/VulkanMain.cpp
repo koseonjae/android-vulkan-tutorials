@@ -350,17 +350,13 @@ uint32_t getMemoryTypeIndex( int memoryTypeBits, VkFlags requirementMask )
     // VK_MEMORY_PROPERTY_HOST_COHERENT_BIT : host와 device가 밀착된 메모리
     //                                      : 호스트게 메모리에 쓴 글을 flush하지 않아도 device가 바로 읽을 수 있고
     //                                      : device가 메모리에 쓴 글도 호스트에게 visible함
-
     VkPhysicalDeviceMemoryProperties memoryProperties;
-    vkGetPhysicalDeviceMemoryProperties( device.physicalDevice_, &memoryProperties ); // GPU가 가지고 있는 메모리 타입을 가져온다.
+    vkGetPhysicalDeviceMemoryProperties( device.physicalDevice_, &memoryProperties );
     for( uint32_t i = 0; i < VK_MAX_MEMORY_TYPES; ++i )
     {
-        if( ( memoryTypeBits & 1 ) == 1 )
+        if( ( memoryProperties.memoryTypes[i].propertyFlags & requirementMask ) == requirementMask )
         {
-            if( ( memoryProperties.memoryTypes[i].propertyFlags & requirementMask ) == requirementMask )
-            {
-                return i;
-            }
+            return i;
         }
     }
     assert( false );
@@ -372,14 +368,16 @@ void CreateBuffers( void )
     //                      : 이 버퍼를 cpu에서 write할 수 있도록 하려면, VkDeviceMemory를 만들어서 cpu address와 binding해야함
     // VkDeviceMemory       : MemoryRequirements와 allocationInfo를 통해 device memory 객체를 생성한다.
     //                      : cpu voide pointer와 mapping하여 cpu에서 VkBuffer 메모리 write 할 수 있게 한다.
-    const float vertexData[]{ -1, -1, 0, 1, -1, 0, 0, 1, 0 };
+
+    std::vector<float> vertices{ -1, 1, 0, 0, -1, 0, 1, 1, 0 };
+
     VkBufferCreateInfo bufferCreateInfo;
     bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferCreateInfo.pNext = nullptr;
     bufferCreateInfo.flags = 0;
-    bufferCreateInfo.size = sizeof( vertexData );
+    bufferCreateInfo.size = vertices.size() * sizeof( float );
     bufferCreateInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE; // access to any range or image subresource of the object will be exclusive to a single queue family at a time.
+    bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     bufferCreateInfo.queueFamilyIndexCount = 1;
     bufferCreateInfo.pQueueFamilyIndices = &device.queueFamilyIndex_;
     vkCreateBuffer( device.device_, &bufferCreateInfo, nullptr, &buffers.vertexBuf_ );
@@ -387,20 +385,19 @@ void CreateBuffers( void )
     VkMemoryRequirements memoryRequirements;
     vkGetBufferMemoryRequirements( device.device_, buffers.vertexBuf_, &memoryRequirements );
 
-    VkMemoryAllocateInfo allocateInfo;
-    allocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocateInfo.pNext = nullptr;
-    allocateInfo.allocationSize = memoryRequirements.size;
-    allocateInfo.memoryTypeIndex = getMemoryTypeIndex( memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT );
-
     VkDeviceMemory deviceMemory;
-    VkResult result = vkAllocateMemory( device.device_, &allocateInfo, nullptr, &deviceMemory );
-    assert( result == VK_SUCCESS );
+    VkMemoryAllocateInfo memoryAllocateInfo;
+    memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    memoryAllocateInfo.pNext = nullptr;
+    memoryAllocateInfo.allocationSize = vertices.size() * sizeof( float );
+    memoryAllocateInfo.memoryTypeIndex = getMemoryTypeIndex( memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT );
+    vkAllocateMemory( device.device_, &memoryAllocateInfo, nullptr, &deviceMemory );
 
     void* data{ nullptr };
-    vkMapMemory( device.device_, deviceMemory, 0, allocateInfo.allocationSize, 0, &data );
-    memcpy( data, vertexData, sizeof( vertexData ) );
+    vkMapMemory( device.device_, deviceMemory, 0, vertices.size() * sizeof( float ), 0, &data );
+    memcpy( data, vertices.data(), vertices.size() * sizeof( float ) );
     vkUnmapMemory( device.device_, deviceMemory );
+
     vkBindBufferMemory( device.device_, buffers.vertexBuf_, deviceMemory, 0 );
 }
 
