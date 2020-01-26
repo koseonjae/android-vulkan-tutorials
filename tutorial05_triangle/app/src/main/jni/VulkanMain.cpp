@@ -444,16 +444,16 @@ void CreateGraphicsPipeline( void )
 
     memset( &gfxPipeline, 0, sizeof( gfxPipeline ) );
 
-    VkPipelineLayoutCreateInfo layoutCreateInfo; // layout: 데이터(주로 이미지)의 형식이나 종류를 정의한다.
+    VkPipelineLayoutCreateInfo layoutCreateInfo;
     layoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     layoutCreateInfo.pNext = nullptr;
     layoutCreateInfo.flags = 0;
-    layoutCreateInfo.setLayoutCount = 0; // vkCmdBindVertexBuffers 로 vertexbuffer 전달하고 외에는 전달할 데이터 없음
+    layoutCreateInfo.setLayoutCount = 0;
     layoutCreateInfo.pSetLayouts = nullptr;
     layoutCreateInfo.pushConstantRangeCount = 0;
     layoutCreateInfo.pPushConstantRanges = nullptr;
     VkResult result = vkCreatePipelineLayout( device.device_, &layoutCreateInfo, nullptr, &gfxPipeline.layout_ );
-    assert( result == VK_SUCCESS );
+    assert( VK_SUCCESS == result );
 
     VkShaderModule vertexShader, fragmentShader;
     loadShaderFromFile( "shaders/tri.vert.spv", &vertexShader, VERTEX_SHADER );
@@ -474,6 +474,33 @@ void CreateGraphicsPipeline( void )
     shaderStageCreateInfo[1].module = fragmentShader;
     shaderStageCreateInfo[1].pName = "main";
     shaderStageCreateInfo[1].pSpecializationInfo = nullptr;
+
+    VkVertexInputBindingDescription vertexInputBindingDescription;
+    vertexInputBindingDescription.binding = 0;
+    vertexInputBindingDescription.stride = 3 * sizeof( float );
+    vertexInputBindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+    VkVertexInputAttributeDescription vertexInputAttributeDescription;
+    vertexInputAttributeDescription.location = 0;
+    vertexInputAttributeDescription.binding = 0;
+    vertexInputAttributeDescription.format = VK_FORMAT_R32G32B32_SFLOAT;
+    vertexInputAttributeDescription.offset = 0;
+
+    VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo;
+    vertexInputStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertexInputStateCreateInfo.pNext = nullptr;
+    vertexInputStateCreateInfo.flags = 0;
+    vertexInputStateCreateInfo.vertexBindingDescriptionCount = 1;
+    vertexInputStateCreateInfo.pVertexBindingDescriptions = &vertexInputBindingDescription;
+    vertexInputStateCreateInfo.vertexAttributeDescriptionCount = 1;
+    vertexInputStateCreateInfo.pVertexAttributeDescriptions = &vertexInputAttributeDescription;
+
+    VkPipelineInputAssemblyStateCreateInfo inputAssemblyStateCreateInfo;
+    inputAssemblyStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    inputAssemblyStateCreateInfo.pNext = nullptr;
+    inputAssemblyStateCreateInfo.flags = 0;
+    inputAssemblyStateCreateInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    inputAssemblyStateCreateInfo.primitiveRestartEnable = VK_FALSE;
 
     VkViewport viewport;
     viewport.x = 0;
@@ -497,6 +524,18 @@ void CreateGraphicsPipeline( void )
     viewportStateCreateInfo.scissorCount = 1;
     viewportStateCreateInfo.pScissors = &scissor;
 
+    VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo;
+    rasterizationStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    rasterizationStateCreateInfo.pNext = nullptr;
+    rasterizationStateCreateInfo.flags = 0;
+    rasterizationStateCreateInfo.depthClampEnable = VK_FALSE;
+    rasterizationStateCreateInfo.rasterizerDiscardEnable = VK_FALSE;
+    rasterizationStateCreateInfo.polygonMode = VK_POLYGON_MODE_FILL;
+    rasterizationStateCreateInfo.cullMode = VK_CULL_MODE_FRONT_BIT;
+    rasterizationStateCreateInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    rasterizationStateCreateInfo.depthBiasEnable = VK_FALSE;
+    rasterizationStateCreateInfo.lineWidth = 1.0f;
+
     VkPipelineMultisampleStateCreateInfo multisampleStateCreateInfo;
     multisampleStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     multisampleStateCreateInfo.pNext = nullptr;
@@ -510,11 +549,11 @@ void CreateGraphicsPipeline( void )
 
     VkPipelineColorBlendAttachmentState colorBlendAttachmentState;
     colorBlendAttachmentState.blendEnable = VK_FALSE;
-    colorBlendAttachmentState.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_COLOR;
+    colorBlendAttachmentState.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
     colorBlendAttachmentState.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
     colorBlendAttachmentState.colorBlendOp = VK_BLEND_OP_ADD;
     colorBlendAttachmentState.srcAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-    colorBlendAttachmentState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    colorBlendAttachmentState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
     colorBlendAttachmentState.alphaBlendOp = VK_BLEND_OP_ADD;
     colorBlendAttachmentState.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 
@@ -522,48 +561,10 @@ void CreateGraphicsPipeline( void )
     colorBlendStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
     colorBlendStateCreateInfo.pNext = nullptr;
     colorBlendStateCreateInfo.flags = 0;
-    colorBlendStateCreateInfo.logicOpEnable = VK_TRUE;
+    colorBlendStateCreateInfo.logicOpEnable = VK_FALSE;
     colorBlendStateCreateInfo.logicOp = VK_LOGIC_OP_COPY;
     colorBlendStateCreateInfo.attachmentCount = 1;
     colorBlendStateCreateInfo.pAttachments = &colorBlendAttachmentState;
-
-    VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo;
-    rasterizationStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-    rasterizationStateCreateInfo.pNext = nullptr;
-    rasterizationStateCreateInfo.flags = 0;
-    rasterizationStateCreateInfo.depthClampEnable = VK_FALSE;
-    rasterizationStateCreateInfo.rasterizerDiscardEnable = VK_FALSE;
-    rasterizationStateCreateInfo.polygonMode = VK_POLYGON_MODE_FILL;
-    rasterizationStateCreateInfo.cullMode = VK_CULL_MODE_NONE;
-    rasterizationStateCreateInfo.frontFace = VK_FRONT_FACE_CLOCKWISE;
-    rasterizationStateCreateInfo.lineWidth = 1;
-
-    VkPipelineInputAssemblyStateCreateInfo inputAssemblyStateCreateInfo;
-    inputAssemblyStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    inputAssemblyStateCreateInfo.pNext = nullptr;
-    inputAssemblyStateCreateInfo.flags = 0;
-    inputAssemblyStateCreateInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    inputAssemblyStateCreateInfo.primitiveRestartEnable = VK_FALSE; // a special vertex index value is treated as restarting the assembly of primitives
-
-    VkVertexInputBindingDescription vertexInputBindingDescription;
-    vertexInputBindingDescription.binding = 0;
-    vertexInputBindingDescription.stride = 3 * sizeof( float );
-    vertexInputBindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-    VkVertexInputAttributeDescription vertexInputAttributeDescription;
-    vertexInputAttributeDescription.location = 0;
-    vertexInputAttributeDescription.binding = 0;
-    vertexInputAttributeDescription.format = VK_FORMAT_R32G32B32_SFLOAT;
-    vertexInputAttributeDescription.offset = 0;
-
-    VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo;
-    vertexInputStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertexInputStateCreateInfo.pNext = nullptr;
-    vertexInputStateCreateInfo.flags = 0;
-    vertexInputStateCreateInfo.vertexBindingDescriptionCount = 1;
-    vertexInputStateCreateInfo.pVertexBindingDescriptions = &vertexInputBindingDescription;
-    vertexInputStateCreateInfo.vertexAttributeDescriptionCount = 1;
-    vertexInputStateCreateInfo.pVertexAttributeDescriptions = &vertexInputAttributeDescription;
 
     VkPipelineCacheCreateInfo cacheCreateInfo;
     cacheCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
@@ -571,6 +572,8 @@ void CreateGraphicsPipeline( void )
     cacheCreateInfo.flags = 0;
     cacheCreateInfo.initialDataSize = 0;
     cacheCreateInfo.pInitialData = nullptr;
+    result = vkCreatePipelineCache( device.device_, &cacheCreateInfo, nullptr, &gfxPipeline.cache_ );
+    assert( VK_SUCCESS == result );
 
     VkGraphicsPipelineCreateInfo pipelineCreateInfo;
     pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -578,8 +581,8 @@ void CreateGraphicsPipeline( void )
     pipelineCreateInfo.flags = 0;
     pipelineCreateInfo.stageCount = 2;
     pipelineCreateInfo.pStages = shaderStageCreateInfo;
-    pipelineCreateInfo.pVertexInputState = &vertexInputStateCreateInfo; // attribute에 대한 정보. format, offset, stride, inputrate, binding 등등
-    pipelineCreateInfo.pInputAssemblyState = &inputAssemblyStateCreateInfo; // primitive assembly
+    pipelineCreateInfo.pVertexInputState = &vertexInputStateCreateInfo;
+    pipelineCreateInfo.pInputAssemblyState = &inputAssemblyStateCreateInfo;
     pipelineCreateInfo.pTessellationState = nullptr;
     pipelineCreateInfo.pViewportState = &viewportStateCreateInfo;
     pipelineCreateInfo.pRasterizationState = &rasterizationStateCreateInfo;
@@ -587,14 +590,13 @@ void CreateGraphicsPipeline( void )
     pipelineCreateInfo.pDepthStencilState = nullptr;
     pipelineCreateInfo.pColorBlendState = &colorBlendStateCreateInfo;
     pipelineCreateInfo.pDynamicState = nullptr;
-    pipelineCreateInfo.layout = gfxPipeline.layout_; // 디스크립터 세트 레이아웃의 순서 관리
+    pipelineCreateInfo.layout = gfxPipeline.layout_;
     pipelineCreateInfo.renderPass = render.renderPass_;
     pipelineCreateInfo.subpass = 0;
     pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
     pipelineCreateInfo.basePipelineIndex = 0;
-
     result = vkCreateGraphicsPipelines( device.device_, gfxPipeline.cache_, 1, &pipelineCreateInfo, nullptr, &gfxPipeline.pipeline_ );
-    assert( result == VK_SUCCESS );
+    assert( VK_SUCCESS == result );
 
     vkDestroyShaderModule( device.device_, vertexShader, nullptr );
     vkDestroyShaderModule( device.device_, fragmentShader, nullptr );
