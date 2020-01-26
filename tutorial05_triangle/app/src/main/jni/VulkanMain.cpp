@@ -299,18 +299,15 @@ void CreateFramebuffers( VkRenderPass renderPass, VkImageView depthView = VK_NUL
     // Swapchain Image  : 스왑 체인 이미지는 드라이버가 소유권을 가지고 있으며 할당, 해제할 수 없다.
     //                  : 단지 acquire & present operation 할때 잠시 빌려서 쓰는것 뿐임
 
-    VkResult result = vkGetSwapchainImagesKHR( device.device_, swapchain.swapchain_, &swapchain.swapchainLength_, nullptr );
-    assert( result == VK_SUCCESS );
+    vkGetSwapchainImagesKHR( device.device_, swapchain.swapchain_, &swapchain.swapchainLength_, nullptr );
 
     swapchain.displayImages_.resize( swapchain.swapchainLength_ );
-
-    result = vkGetSwapchainImagesKHR( device.device_, swapchain.swapchain_, &swapchain.swapchainLength_, swapchain.displayImages_.data() );
-    assert( result == VK_SUCCESS );
-
     swapchain.displayViews_.resize( swapchain.swapchainLength_ );
     swapchain.framebuffers_.resize( swapchain.swapchainLength_ );
 
-    for( unsigned int i = 0; i < swapchain.swapchainLength_; ++i )
+    vkGetSwapchainImagesKHR( device.device_, swapchain.swapchain_, &swapchain.swapchainLength_, swapchain.displayImages_.data() );
+
+    for( uint32_t i = 0; i < swapchain.swapchainLength_; ++i )
     {
         VkImageViewCreateInfo imageViewCreateInfo;
         imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -319,14 +316,14 @@ void CreateFramebuffers( VkRenderPass renderPass, VkImageView depthView = VK_NUL
         imageViewCreateInfo.image = swapchain.displayImages_.at( i );
         imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
         imageViewCreateInfo.format = swapchain.displayFormat_;
-        imageViewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_R; // imageViewCreateInfo.components 는 component의 remapping을 나타낸다.
-        imageViewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_G; // VK_COMPONENT_SWIZZLE_R: output vector의 R component 값
+        imageViewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_R;
+        imageViewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_G;
         imageViewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_B;
         imageViewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_A;
-        imageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; // which aspects of an image are included in a view
-        imageViewCreateInfo.subresourceRange.baseMipLevel = 0; // selecting the set of mipmap levels
+        imageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
         imageViewCreateInfo.subresourceRange.levelCount = 1;
-        imageViewCreateInfo.subresourceRange.baseArrayLayer = 0; // array layers to be accessible to the view
+        imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
         imageViewCreateInfo.subresourceRange.layerCount = 1;
         vkCreateImageView( device.device_, &imageViewCreateInfo, nullptr, &swapchain.displayViews_.at( i ) );
 
@@ -337,7 +334,7 @@ void CreateFramebuffers( VkRenderPass renderPass, VkImageView depthView = VK_NUL
         framebufferCreateInfo.renderPass = renderPass;
         framebufferCreateInfo.attachmentCount = 1;
         framebufferCreateInfo.pAttachments = &swapchain.displayViews_.at( i );
-        framebufferCreateInfo.width = swapchain.displaySize_.width; // width, height and layers define the dimensions of the framebuffer
+        framebufferCreateInfo.width = swapchain.displaySize_.width;
         framebufferCreateInfo.height = swapchain.displaySize_.height;
         framebufferCreateInfo.layers = 1;
         vkCreateFramebuffer( device.device_, &framebufferCreateInfo, nullptr, &swapchain.framebuffers_.at( i ) );
