@@ -247,46 +247,43 @@ void CreateRenderPass( void )
     // dependency management        : 커맨드 버퍼를 통해 렌더패스간 의존성을 관리 (의존성이 있는 렌더패스를 가지고 있는 커맨드버퍼들을 동기화)
     // life cycle management        : 멀티스레딩 환경에서 렌더패스 인스턴스, 커맨드 버퍼, 프레임 버퍼 등의 생명주기를 관리하는데 용이
 
-    VkAttachmentDescription attachmentDescription; // attachment의 다양한 속성 지정
+    VkAttachmentDescription attachmentDescription;
     attachmentDescription.flags = 0;
     attachmentDescription.format = swapchain.displayFormat_;
-    attachmentDescription.samples = VK_SAMPLE_COUNT_1_BIT; // msaa
-    attachmentDescription.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; // load할때 clear해서 load한다. read 안하고 write만 할꺼면 don't care로 하면 됨
-    attachmentDescription.storeOp = VK_ATTACHMENT_STORE_OP_STORE; // 쓰고 버릴거면 don't care로하고, 저장할꺼면 store로 한다.
+    attachmentDescription.samples = VK_SAMPLE_COUNT_1_BIT;
+    attachmentDescription.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachmentDescription.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     attachmentDescription.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     attachmentDescription.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachmentDescription.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED; // renderpass 시작전에 어떤 layout 인가 (처음 생성되었으니 undefined)
-    attachmentDescription.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; // renderpass 이후의 layout 으로 바뀔건가 (layout 변환 없이 그대로 간다)
+    attachmentDescription.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachmentDescription.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-    // attachment reference 에서의 layout은 실제로 렌더링 파이프라인에서 쓰일 layout
-    // 드라이버는 이 부분을 알아서 전환해주지 않음, 응용 프로그램에서 모두 정의 해줘야 함
     VkAttachmentReference attachmentReference;
     attachmentReference.attachment = 0;
-    attachmentReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // renderpass에서 어떤 layout 으로 동작할건가(컬러첨부에 적합한 값으로 설정)
+    attachmentReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
     VkSubpassDescription subpassDescription;
     subpassDescription.flags = 0;
-    subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS; // graphics or compute중 어떤 파이프라인에 바인드 될 것인
+    subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpassDescription.inputAttachmentCount = 0;
-    subpassDescription.pInputAttachments = nullptr; // 쉐이더와 공유할 첨부 목록
+    subpassDescription.pInputAttachments = VK_NULL_HANDLE;
     subpassDescription.colorAttachmentCount = 1;
-    subpassDescription.pColorAttachments = &attachmentReference; // 컬러 첨부
-    subpassDescription.pResolveAttachments = nullptr; // 멀티샘플링에서 쓰이는 resolve 첨부
-    subpassDescription.pDepthStencilAttachment = nullptr; // 깊이/스텐실 첨부
+    subpassDescription.pColorAttachments = &attachmentReference;
+    subpassDescription.pResolveAttachments = VK_NULL_HANDLE;
+    subpassDescription.pDepthStencilAttachment = VK_NULL_HANDLE;
     subpassDescription.preserveAttachmentCount = 0;
-    subpassDescription.pPreserveAttachments = nullptr; // 서브패스에선 쓰이진 않지만 보존되어야 하는 컨텐츠, 다음 패스에서 쓰기위해 임시저장
+    subpassDescription.pPreserveAttachments = VK_NULL_HANDLE;
 
     VkRenderPassCreateInfo renderPassCreateInfo;
     renderPassCreateInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
     renderPassCreateInfo.pNext = nullptr;
     renderPassCreateInfo.flags = 0;
     renderPassCreateInfo.attachmentCount = 1;
-    renderPassCreateInfo.pAttachments = &attachmentDescription; // 첨부 목록
+    renderPassCreateInfo.pAttachments = &attachmentDescription;
     renderPassCreateInfo.subpassCount = 1;
-    renderPassCreateInfo.pSubpasses = &subpassDescription; // 서브패스 목록
+    renderPassCreateInfo.pSubpasses = &subpassDescription;
     renderPassCreateInfo.dependencyCount = 0;
-    renderPassCreateInfo.pDependencies = nullptr; // VkSubpassDependency 를 통해 서브패스간의 dependency 정의
-
+    renderPassCreateInfo.pDependencies = VK_NULL_HANDLE;
     vkCreateRenderPass( device.device_, &renderPassCreateInfo, nullptr, &render.renderPass_ );
 }
 
