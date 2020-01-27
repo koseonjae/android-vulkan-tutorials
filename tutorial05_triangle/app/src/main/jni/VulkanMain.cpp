@@ -442,6 +442,14 @@ void CreateGraphicsPipeline( void )
     // VkPipelineCache          : PCO. 저장된 파이프라인을 빠르게 검색하고 재사용하기 위한 매커니즘 제공 (중복 파이프라인 생성을 피할 수 있음)
     // VkPipeline               : blend, depth/stencil test, primitive assembly, viewport 등의 하드웨어 설정 제어 기능 제공
 
+    // GPU instancing           : 같은 메쉬를 여러곳에 그릴 때(예를들어 나무를),
+    //                          : 같은 draw call을 여러번 하지 않고 인스턴싱하면 오버헤드를 줄일 수 있음
+
+    // vertexInputBindingDescription    : vertex 입력 비율 저장 (inputRate, stride)
+    //                                  : inputRate : vertex index의 addressing 모드를 결정 (instance는 GPU instancing 할 때 쓰임)
+    // vertexInputAttributeDescription  : 데이터 해석에 도움을 주는 메타 데이터 저장
+    //                                  : location, offset, format 등
+
     memset( &gfxPipeline, 0, sizeof( gfxPipeline ) );
 
     VkPipelineLayoutCreateInfo layoutCreateInfo;
