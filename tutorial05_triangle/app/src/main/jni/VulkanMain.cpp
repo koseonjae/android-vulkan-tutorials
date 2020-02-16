@@ -291,6 +291,12 @@ void CreateFramebuffers( VkRenderPass renderPass, VkImageView depthView = VK_NUL
     // Swapchain Image  : 스왑 체인 이미지는 드라이버가 소유권을 가지고 있으며 할당, 해제할 수 없다.
     //                  : 단지 acquire & present operation 할때 잠시 빌려서 쓰는것 뿐임
 
+    // baseArrayLayer   : VkImage
+    //                      : imageArrayLayers  : VkImage가 갖는 image의 수 (multi view나 stereo surface가 아니면 1 사용)
+    //                  : VkImageSubresourceRange
+    //                      : layerCount        : VkImage가 멀티뷰일때 그중 몇개의 이미지를 사용하는가
+    //                      : baseArrayLayer    : 사용하는 이미지들(imageArrayLayers)중 몇개의 이미지를 접근 가능한 이미지로 지정할것인가
+
     swapchain.displayImages_.resize( swapchain.swapchainLength_ );
     swapchain.displayViews_.resize( swapchain.swapchainLength_ );
     swapchain.framebuffers_.resize( swapchain.swapchainLength_ );
@@ -317,13 +323,20 @@ void CreateFramebuffers( VkRenderPass renderPass, VkImageView depthView = VK_NUL
         imageViewCreateInfo.subresourceRange.layerCount = 1;
         vkCreateImageView( device.device_, &imageViewCreateInfo, nullptr, &swapchain.displayViews_.at( i ) );
 
+        std::vector<VkImageView> imageViews;
+        imageViews.push_back( swapchain.displayViews_.at( i ) );
+        if( depthView != VK_NULL_HANDLE )
+        {
+            imageViews.push_back( depthView );
+        }
+
         VkFramebufferCreateInfo framebufferCreateInfo;
         framebufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
         framebufferCreateInfo.pNext = nullptr;
         framebufferCreateInfo.flags = 0;
         framebufferCreateInfo.renderPass = renderPass;
-        framebufferCreateInfo.attachmentCount = 1;
-        framebufferCreateInfo.pAttachments = &swapchain.displayViews_.at( i );
+        framebufferCreateInfo.attachmentCount = imageViews.size();
+        framebufferCreateInfo.pAttachments = imageViews.data();
         framebufferCreateInfo.width = swapchain.displaySize_.width;
         framebufferCreateInfo.height = swapchain.displaySize_.height;
         framebufferCreateInfo.layers = 1;
