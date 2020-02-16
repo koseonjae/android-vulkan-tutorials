@@ -375,13 +375,13 @@ void CreateBuffers( void )
     // VkDeviceMemory       : MemoryRequirements와 allocationInfo를 통해 device memory 객체를 생성한다.
     //                      : cpu voide pointer와 mapping하여 cpu에서 VkBuffer 메모리 write 할 수 있게 한다.
 
-    std::vector<float> vertices{ -1, -1, 0, 1, -1, 0, 0, 1, 0 };
+    float triangle[]{ -1, -1, 0, 1, -1, 0, 0, 1, 0 };
 
     VkBufferCreateInfo bufferCreateInfo;
     bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferCreateInfo.pNext = nullptr;
     bufferCreateInfo.flags = 0;
-    bufferCreateInfo.size = vertices.size() * sizeof( float );
+    bufferCreateInfo.size = sizeof( triangle );
     bufferCreateInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
     bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     bufferCreateInfo.queueFamilyIndexCount = 1;
@@ -391,17 +391,18 @@ void CreateBuffers( void )
     VkMemoryRequirements memoryRequirements;
     vkGetBufferMemoryRequirements( device.device_, buffers.vertexBuf_, &memoryRequirements );
 
-    VkDeviceMemory deviceMemory;
     VkMemoryAllocateInfo memoryAllocateInfo;
     memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     memoryAllocateInfo.pNext = nullptr;
-    memoryAllocateInfo.allocationSize = vertices.size() * sizeof( float );
-    memoryAllocateInfo.memoryTypeIndex = getMemoryTypeIndex( memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT );
+    memoryAllocateInfo.allocationSize = sizeof( triangle );
+    memoryAllocateInfo.memoryTypeIndex = getMemoryTypeIndex( memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT );
+
+    VkDeviceMemory deviceMemory;
     vkAllocateMemory( device.device_, &memoryAllocateInfo, nullptr, &deviceMemory );
 
     void* data{ nullptr };
-    vkMapMemory( device.device_, deviceMemory, 0, vertices.size() * sizeof( float ), 0, &data );
-    memcpy( data, vertices.data(), vertices.size() * sizeof( float ) );
+    vkMapMemory( device.device_, deviceMemory, 0, sizeof( triangle ), VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, &data );
+    memcpy( data, triangle, sizeof( triangle ) );
     vkUnmapMemory( device.device_, deviceMemory );
 
     vkBindBufferMemory( device.device_, buffers.vertexBuf_, deviceMemory, 0 );
