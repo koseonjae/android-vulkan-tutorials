@@ -92,78 +92,78 @@ void CreateVulkanDevice( ANativeWindow* platformWindow, VkApplicationInfo* appIn
     //                  : 레이어는 기존 vulkan api에 연결되고, 지정된 레이어와 연결된 vulkan 명령체인에 삽입됨
     //                  : 예를들어 vulkan api로 올바른 파라미터가 들어오는지 검증한다.
     //                  : 이러한 레이어는 릴리즈에선 사용하지 않게 설정하면 불필요한 오버헤드를 줄일 수 있다.
+    // Commands that enumerate instance properties, or that accept a VkInstance object as a parameter, are considered instance-level functionality.
+    // Commands that enumerate physical device properties, or that accept a VkDevice object or any of a device’s child objects as a parameter,
+    // are considered device-level functionality.
 
-    std::vector<const char*> instance_extensions;
-    std::vector<const char*> device_extensions;
+    std::vector<const char*> instanceExtensions{ "VK_KHR_surface", "VK_KHR_android_surface" };
+    std::vector<const char*> deviceExtensions{ "VK_KHR_swapchain" };
 
-    instance_extensions.emplace_back( "VK_KHR_surface" );
-    instance_extensions.emplace_back( "VK_KHR_android_surface" );
-
-    device_extensions.emplace_back( "VK_KHR_swapchain" );
+    VkApplicationInfo applicationInfo;
+    applicationInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    applicationInfo.pNext = nullptr;
+    applicationInfo.pApplicationName = "tutorial";
+    applicationInfo.applicationVersion = VK_MAKE_VERSION( 1, 0, 0 );
+    applicationInfo.pEngineName = "tutorial";
+    applicationInfo.engineVersion = VK_MAKE_VERSION( 1, 0, 0 );
+    applicationInfo.apiVersion = VK_MAKE_VERSION( 1, 0, 0 );
 
     VkInstanceCreateInfo instanceCreateInfo;
     instanceCreateInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     instanceCreateInfo.pNext = nullptr;
     instanceCreateInfo.flags = 0;
-    instanceCreateInfo.pApplicationInfo = appInfo;
+    instanceCreateInfo.pApplicationInfo = &applicationInfo;
     instanceCreateInfo.enabledLayerCount = 0;
     instanceCreateInfo.ppEnabledLayerNames = nullptr;
-    instanceCreateInfo.enabledExtensionCount = instance_extensions.size();
-    instanceCreateInfo.ppEnabledExtensionNames = instance_extensions.data();
+    instanceCreateInfo.enabledExtensionCount = instanceExtensions.size();
+    instanceCreateInfo.ppEnabledExtensionNames = instanceExtensions.data();
     vkCreateInstance( &instanceCreateInfo, nullptr, &device.instance_ );
 
-    VkAndroidSurfaceCreateInfoKHR androidSurfaceCreateInfo;
-    androidSurfaceCreateInfo.sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR;
-    androidSurfaceCreateInfo.pNext = nullptr;
-    androidSurfaceCreateInfo.flags = 0;
-    androidSurfaceCreateInfo.window = platformWindow;
-    vkCreateAndroidSurfaceKHR( device.instance_, &androidSurfaceCreateInfo, nullptr, &device.surface_ );
+    VkAndroidSurfaceCreateInfoKHR surfaceCreateInfo;
+    surfaceCreateInfo.sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR;
+    surfaceCreateInfo.pNext = nullptr;
+    surfaceCreateInfo.flags = 0;
+    surfaceCreateInfo.window = platformWindow;
+    vkCreateAndroidSurfaceKHR( device.instance_, &surfaceCreateInfo, nullptr, &device.surface_ );
 
-    uint32_t gpuCount;
-    std::vector<VkPhysicalDevice> gpus;
-    vkEnumeratePhysicalDevices( device.instance_, &gpuCount, nullptr );
-    gpus.resize( gpuCount );
-    vkEnumeratePhysicalDevices( device.instance_, &gpuCount, gpus.data() );
-    device.physicalDevice_ = gpus.at( 0 );
+    uint32_t physicalDeviceCount{ 0 };
+    vkEnumeratePhysicalDevices( device.instance_, &physicalDeviceCount, nullptr );
+    std::vector<VkPhysicalDevice> physicalDevices( physicalDeviceCount );
+    vkEnumeratePhysicalDevices( device.instance_, &physicalDeviceCount, physicalDevices.data() );
+    device.physicalDevice_ = physicalDevices[0];
 
-    uint32_t queueFamilyCount;
-    std::vector<VkQueueFamilyProperties> queueFamilyProperties;
-    vkGetPhysicalDeviceQueueFamilyProperties( device.physicalDevice_, &queueFamilyCount, nullptr );
-    queueFamilyProperties.resize( queueFamilyCount );
-    vkGetPhysicalDeviceQueueFamilyProperties( device.physicalDevice_, &queueFamilyCount, queueFamilyProperties.data() );
+    uint32_t propertiesCount{ 0 };
+    vkGetPhysicalDeviceQueueFamilyProperties( device.physicalDevice_, &propertiesCount, nullptr );
+    std::vector<VkQueueFamilyProperties> properties( propertiesCount );
+    vkGetPhysicalDeviceQueueFamilyProperties( device.physicalDevice_, &propertiesCount, properties.data() );
 
-    uint32_t queueFamilyIndex{ 0 };
-    for( auto it = queueFamilyProperties.begin(); it != queueFamilyProperties.end(); ++it, queueFamilyIndex++ )
-    {
-        if( it->queueFlags & VK_QUEUE_GRAPHICS_BIT )
-        {
-            device.queueFamilyIndex_ = it - queueFamilyProperties.begin();
-            break;
-        }
-    }
-    assert( queueFamilyIndex < queueFamilyProperties.size() );
+    auto found = std::find_if( properties.begin(), properties.end(), [=]( VkQueueFamilyProperties property ) {
+        return property.queueFlags & VK_QUEUE_GRAPHICS_BIT;
+    } );
+    assert( found != properties.end() );
+    device.queueFamilyIndex_ = found - properties.begin();
 
-    std::array<float, 1> priorities{ 1.f };
-    VkDeviceQueueCreateInfo deviceQueueCreateInfo;
-    deviceQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    deviceQueueCreateInfo.pNext = nullptr;
-    deviceQueueCreateInfo.flags = 0;
-    deviceQueueCreateInfo.queueFamilyIndex = device.queueFamilyIndex_;
-    deviceQueueCreateInfo.queueCount = priorities.size();
-    deviceQueueCreateInfo.pQueuePriorities = priorities.data();
+    VkDeviceQueueCreateInfo queueCreateInfo;
+    queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    queueCreateInfo.pNext = nullptr;
+    queueCreateInfo.flags = 0;
+    queueCreateInfo.queueFamilyIndex = device.queueFamilyIndex_;
+    queueCreateInfo.queueCount = 1;
 
     VkDeviceCreateInfo deviceCreateInfo;
-    deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
     deviceCreateInfo.pNext = nullptr;
     deviceCreateInfo.flags = 0;
     deviceCreateInfo.queueCreateInfoCount = 1;
-    deviceCreateInfo.pQueueCreateInfos = &deviceQueueCreateInfo;
+    deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
     deviceCreateInfo.enabledLayerCount = 0;
     deviceCreateInfo.ppEnabledLayerNames = nullptr;
-    deviceCreateInfo.enabledExtensionCount = device_extensions.size();
-    deviceCreateInfo.ppEnabledExtensionNames = device_extensions.data();
+    deviceCreateInfo.enabledExtensionCount = deviceExtensions.size();
+    deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions.data();
     deviceCreateInfo.pEnabledFeatures = nullptr;
+
     vkCreateDevice( device.physicalDevice_, &deviceCreateInfo, nullptr, &device.device_ );
+
     vkGetDeviceQueue( device.device_, device.queueFamilyIndex_, 0, &device.queue_ );
 }
 
