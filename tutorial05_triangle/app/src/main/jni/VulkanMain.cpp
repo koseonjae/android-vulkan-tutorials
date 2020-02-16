@@ -355,11 +355,14 @@ uint32_t getMemoryTypeIndex( int memoryTypeBits, VkFlags requirementMask )
     //                                      : device가 메모리에 쓴 글도 호스트에게 visible함
     VkPhysicalDeviceMemoryProperties memoryProperties;
     vkGetPhysicalDeviceMemoryProperties( device.physicalDevice_, &memoryProperties );
-    for( uint32_t i = 0; i < VK_MAX_MEMORY_TYPES; ++i )
+    for( uint32_t i = 0; i < memoryProperties.memoryTypeCount; ++i )
     {
-        if( ( memoryProperties.memoryTypes[i].propertyFlags & requirementMask ) == requirementMask )
+        if( memoryTypeBits & 1 << i )
         {
-            return i;
+            if( ( memoryProperties.memoryTypes[i].propertyFlags & requirementMask ) == requirementMask )
+            {
+                return i;
+            }
         }
     }
     assert( false );
