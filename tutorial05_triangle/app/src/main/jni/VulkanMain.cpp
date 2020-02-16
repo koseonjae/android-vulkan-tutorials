@@ -204,7 +204,7 @@ void CreateSwapChain( void )
     swapchainCreateInfo.imageFormat = swapchain.displayFormat_;
     swapchainCreateInfo.imageColorSpace = swapchain.colorSpaceKhr_;
     swapchainCreateInfo.imageExtent = swapchain.displaySize_;
-    swapchainCreateInfo.imageArrayLayers = 0;
+    swapchainCreateInfo.imageArrayLayers = 1;
     swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     swapchainCreateInfo.queueFamilyIndexCount = 1;
