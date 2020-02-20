@@ -698,7 +698,7 @@ void CreateCommand( void )
         vkCmdBindPipeline( render.cmdBuffer_[i], VK_PIPELINE_BIND_POINT_GRAPHICS, gfxPipeline.pipeline_ );
 
         VkDeviceSize offset{ 0 };
-        vkCmdBindVertexBuffers( render.cmdBuffer_[i], 0, 3, &buffers.vertexBuf_, &offset );
+        vkCmdBindVertexBuffers( render.cmdBuffer_[i], 0, 1, &buffers.vertexBuf_, &offset );
 
         vkCmdDraw( render.cmdBuffer_[i], 3, 1, 0, 0 );
 
