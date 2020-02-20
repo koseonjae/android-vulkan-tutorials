@@ -676,6 +676,13 @@ void CreateCommand( void )
         commandBufferBeginInfo.pInheritanceInfo = nullptr;
         vkBeginCommandBuffer( render.cmdBuffer_[i], &commandBufferBeginInfo );
 
+        setImageLayout(render.cmdBuffer_[i],
+                       swapchain.displayImages_[i],
+                       VK_IMAGE_LAYOUT_UNDEFINED,
+                       VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                       VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                       VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+
         VkRenderPassBeginInfo renderPassBeginInfo;
         renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         renderPassBeginInfo.pNext = nullptr;
