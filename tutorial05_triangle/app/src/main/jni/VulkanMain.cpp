@@ -777,11 +777,16 @@ bool IsVulkanReady( void )
 // Ask Vulkan to Render a frame
 bool VulkanDrawFrame( void )
 {
-    // fence        : queue, host 사이의 동기화 객체
+    // fence        : device와 host사이의 동기화 객체
+    //              : vkResetFences     : fence가 unsignaled 된다.
     //              : vkQueueSubmit     : fence가 signaled 된다.
     //              : vkWaitForFence    : fence가 signaled가 될 때 까지 기다린다.
-    //              : vkResetFences     : fence가 unsignaled 된다.
+    //              : reset함수에 device를 전달하는데, 이 device가 fence를 reset 시키는 논리적 장치이다
     // semephore    : queue 사이의 동기화 객체
+    //              : submit할때 semaphore전달. 내부적으로 큐들 사이의 동기화해줌, fence와 다르게 해줄게 별로 없음
+
+    //              : fence, semaphore => 시작할때 unsignaled로 하고, 끝나면 signaled로 변경
+    //              : vkAcquireNextImageKHR가 호출될때 세마포어가 unsignaled상태이면 singaled가 될때까지 기다린다? 아니면 미정의 동작?
 
     uint32_t index{ 0 };
     VkResult result = vkAcquireNextImageKHR( device.device_, swapchain.swapchain_, UINT64_MAX, render.semaphore_, render.fence_, &index );
