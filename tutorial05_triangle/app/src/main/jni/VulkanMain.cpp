@@ -23,6 +23,8 @@
 #include <string>
 #include <array>
 
+using namespace std;
+
 struct VulkanDeviceInfo
 {
     bool initialized_;
@@ -103,11 +105,11 @@ void CreateVulkanDevice( ANativeWindow* platformWindow, VkApplicationInfo* appIn
     VkApplicationInfo applicationInfo;
     applicationInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     applicationInfo.pNext = nullptr;
-    applicationInfo.pApplicationName = "tutorial";
+    applicationInfo.pApplicationName = "vktutorial";
     applicationInfo.applicationVersion = VK_MAKE_VERSION( 1, 0, 0 );
-    applicationInfo.pEngineName = "tutorial";
-    applicationInfo.engineVersion = VK_MAKE_VERSION( 1, 0, 0 );
-    applicationInfo.apiVersion = VK_MAKE_VERSION( 1, 0, 0 );
+    applicationInfo.pEngineName = "vktutorial";
+    applicationInfo.engineVersion = VK_MAKE_VERSION( 1, 0, 0 );;
+    applicationInfo.apiVersion = VK_MAKE_VERSION( 1, 0, 0 );;
 
     VkInstanceCreateInfo instanceCreateInfo;
     instanceCreateInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -120,49 +122,50 @@ void CreateVulkanDevice( ANativeWindow* platformWindow, VkApplicationInfo* appIn
     instanceCreateInfo.ppEnabledExtensionNames = instanceExtensions.data();
     vkCreateInstance( &instanceCreateInfo, nullptr, &device.instance_ );
 
-    VkAndroidSurfaceCreateInfoKHR surfaceCreateInfo;
-    surfaceCreateInfo.sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR;
-    surfaceCreateInfo.pNext = nullptr;
-    surfaceCreateInfo.flags = 0;
-    surfaceCreateInfo.window = platformWindow;
-    vkCreateAndroidSurfaceKHR( device.instance_, &surfaceCreateInfo, nullptr, &device.surface_ );
+    VkAndroidSurfaceCreateInfoKHR androidSurfaceCreateInfo;
+    androidSurfaceCreateInfo.sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR;
+    androidSurfaceCreateInfo.pNext = nullptr;
+    androidSurfaceCreateInfo.flags = 0;
+    androidSurfaceCreateInfo.window = platformWindow;
+    vkCreateAndroidSurfaceKHR( device.instance_, &androidSurfaceCreateInfo, nullptr, &device.surface_ );
 
-    uint32_t physicalDeviceCount{ 0 };
-    vkEnumeratePhysicalDevices( device.instance_, &physicalDeviceCount, nullptr );
-    std::vector<VkPhysicalDevice> physicalDevices( physicalDeviceCount );
-    vkEnumeratePhysicalDevices( device.instance_, &physicalDeviceCount, physicalDevices.data() );
-    device.physicalDevice_ = physicalDevices[0];
+    uint32_t gpuCount{ 0 };
+    vkEnumeratePhysicalDevices( device.instance_, &gpuCount, nullptr );
+    vector<VkPhysicalDevice> gpus( gpuCount );
+    vkEnumeratePhysicalDevices( device.instance_, &gpuCount, gpus.data() );
+    device.physicalDevice_ = gpus[0];
 
-    uint32_t propertiesCount{ 0 };
-    vkGetPhysicalDeviceQueueFamilyProperties( device.physicalDevice_, &propertiesCount, nullptr );
-    std::vector<VkQueueFamilyProperties> properties( propertiesCount );
-    vkGetPhysicalDeviceQueueFamilyProperties( device.physicalDevice_, &propertiesCount, properties.data() );
+    uint32_t indexCount{ 0 };
+    vkGetPhysicalDeviceQueueFamilyProperties( device.physicalDevice_, &indexCount, nullptr );
+    vector<VkQueueFamilyProperties> properties( indexCount );
+    vkGetPhysicalDeviceQueueFamilyProperties( device.physicalDevice_, &indexCount, properties.data() );
 
-    auto found = std::find_if( properties.begin(), properties.end(), [=]( VkQueueFamilyProperties property ) {
-        return property.queueFlags & VK_QUEUE_GRAPHICS_BIT;
+    auto found = find_if( properties.begin(), properties.end(), [=]( const VkQueueFamilyProperties& properties ) {
+        return properties.queueFlags & VK_QUEUE_GRAPHICS_BIT;
     } );
     assert( found != properties.end() );
     device.queueFamilyIndex_ = found - properties.begin();
 
-    VkDeviceQueueCreateInfo queueCreateInfo;
-    queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queueCreateInfo.pNext = nullptr;
-    queueCreateInfo.flags = 0;
-    queueCreateInfo.queueFamilyIndex = device.queueFamilyIndex_;
-    queueCreateInfo.queueCount = 1;
+    array<float, 1> priority{ 1.0f };
+    VkDeviceQueueCreateInfo deviceQueueCreateInfo;
+    deviceQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    deviceQueueCreateInfo.pNext = nullptr;
+    deviceQueueCreateInfo.flags = 0;
+    deviceQueueCreateInfo.queueFamilyIndex = device.queueFamilyIndex_;
+    deviceQueueCreateInfo.queueCount = 1;
+    deviceQueueCreateInfo.pQueuePriorities = priority.data();
 
     VkDeviceCreateInfo deviceCreateInfo;
-    deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     deviceCreateInfo.pNext = nullptr;
     deviceCreateInfo.flags = 0;
     deviceCreateInfo.queueCreateInfoCount = 1;
-    deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
+    deviceCreateInfo.pQueueCreateInfos = &deviceQueueCreateInfo;
     deviceCreateInfo.enabledLayerCount = 0;
     deviceCreateInfo.ppEnabledLayerNames = nullptr;
     deviceCreateInfo.enabledExtensionCount = deviceExtensions.size();
     deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions.data();
     deviceCreateInfo.pEnabledFeatures = nullptr;
-
     vkCreateDevice( device.physicalDevice_, &deviceCreateInfo, nullptr, &device.device_ );
 
     vkGetDeviceQueue( device.device_, device.queueFamilyIndex_, 0, &device.queue_ );
@@ -676,12 +679,7 @@ void CreateCommand( void )
         commandBufferBeginInfo.pInheritanceInfo = nullptr;
         vkBeginCommandBuffer( render.cmdBuffer_[i], &commandBufferBeginInfo );
 
-        setImageLayout(render.cmdBuffer_[i],
-                       swapchain.displayImages_[i],
-                       VK_IMAGE_LAYOUT_UNDEFINED,
-                       VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                       VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                       VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+        setImageLayout( render.cmdBuffer_[i], swapchain.displayImages_[i], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT );
 
         VkRenderPassBeginInfo renderPassBeginInfo;
         renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
