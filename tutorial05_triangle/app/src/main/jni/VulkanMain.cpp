@@ -43,7 +43,7 @@ struct VulkanSwapchainInfo
     uint32_t swapchainLength_;
     VkExtent2D displaySize_;
     VkFormat displayFormat_;
-    VkColorSpaceKHR colorSpaceKhr_;
+    VkColorSpaceKHR colorSpace_;
     std::vector<VkImage> displayImages_;
     std::vector<VkImageView> displayViews_;
     std::vector<VkFramebuffer> framebuffers_;
@@ -177,26 +177,24 @@ void CreateSwapChain( void )
     // GPU가 android surface에게 지원하는 format을 가져온다. => VK_FORMAT_R8G8B8_UNORM format에 대한 index를 얻는다.
     // => capability와 format 정보를 통해 swapchain을 생성한다
 
-    VkSurfaceCapabilitiesKHR surfaceCapabilities;
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR( device.physicalDevice_, device.surface_, &surfaceCapabilities );
-
-    uint32_t formatCount;
+    uint32_t formatCount{ 0 };
     vkGetPhysicalDeviceSurfaceFormatsKHR( device.physicalDevice_, device.surface_, &formatCount, nullptr );
-    assert( formatCount );
-
-    std::vector<VkSurfaceFormatKHR> formats( formatCount );
+    vector<VkSurfaceFormatKHR> formats( formatCount );
     vkGetPhysicalDeviceSurfaceFormatsKHR( device.physicalDevice_, device.surface_, &formatCount, formats.data() );
 
     auto found = std::find_if( formats.begin(), formats.end(), [=]( const VkSurfaceFormatKHR& format ) {
         return format.format == VK_FORMAT_R8G8B8A8_UNORM;
     } );
     assert( found != formats.end() );
-    uint32_t formatIndex = found - formats.begin();
+    VkSurfaceFormatKHR format = *found;
 
-    swapchain.displaySize_ = surfaceCapabilities.currentExtent;
-    swapchain.swapchainLength_ = surfaceCapabilities.minImageCount;
-    swapchain.displayFormat_ = formats[formatIndex].format;
-    swapchain.colorSpaceKhr_ = formats[formatIndex].colorSpace;
+    VkSurfaceCapabilitiesKHR capabilities;
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR( device.physicalDevice_, device.surface_, &capabilities );
+
+    swapchain.swapchainLength_ = capabilities.minImageCount;
+    swapchain.displaySize_ = capabilities.currentExtent;
+    swapchain.displayFormat_ = format.format;
+    swapchain.colorSpace_ = format.colorSpace;
 
     VkSwapchainCreateInfoKHR swapchainCreateInfo;
     swapchainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -205,7 +203,7 @@ void CreateSwapChain( void )
     swapchainCreateInfo.surface = device.surface_;
     swapchainCreateInfo.minImageCount = swapchain.swapchainLength_;
     swapchainCreateInfo.imageFormat = swapchain.displayFormat_;
-    swapchainCreateInfo.imageColorSpace = swapchain.colorSpaceKhr_;
+    swapchainCreateInfo.imageColorSpace = swapchain.colorSpace_;
     swapchainCreateInfo.imageExtent = swapchain.displaySize_;
     swapchainCreateInfo.imageArrayLayers = 1;
     swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
@@ -215,7 +213,7 @@ void CreateSwapChain( void )
     swapchainCreateInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
     swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
     swapchainCreateInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
-    swapchainCreateInfo.clipped = VK_FALSE;
+    swapchainCreateInfo.clipped = VK_TRUE;
     swapchainCreateInfo.oldSwapchain = VK_NULL_HANDLE;
     vkCreateSwapchainKHR( device.device_, &swapchainCreateInfo, nullptr, &swapchain.swapchain_ );
 }
