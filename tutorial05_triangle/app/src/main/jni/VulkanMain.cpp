@@ -301,7 +301,6 @@ void CreateFramebuffers( VkRenderPass renderPass, VkImageView depthView = VK_NUL
     swapchain.displayImages_.resize( swapchain.swapchainLength_ );
     swapchain.displayViews_.resize( swapchain.swapchainLength_ );
     swapchain.framebuffers_.resize( swapchain.swapchainLength_ );
-
     vkGetSwapchainImagesKHR( device.device_, swapchain.swapchain_, &swapchain.swapchainLength_, swapchain.displayImages_.data() );
 
     for( uint32_t i = 0; i < swapchain.swapchainLength_; ++i )
@@ -324,20 +323,19 @@ void CreateFramebuffers( VkRenderPass renderPass, VkImageView depthView = VK_NUL
         imageViewCreateInfo.subresourceRange.layerCount = 1;
         vkCreateImageView( device.device_, &imageViewCreateInfo, nullptr, &swapchain.displayViews_.at( i ) );
 
-        std::vector<VkImageView> imageViews;
-        imageViews.push_back( swapchain.displayViews_.at( i ) );
-        if( depthView != VK_NULL_HANDLE )
+        vector<VkImageView> views{ swapchain.displayViews_.at( i ) };
+        if( depthView )
         {
-            imageViews.push_back( depthView );
+            views.push_back( depthView );
         }
 
         VkFramebufferCreateInfo framebufferCreateInfo;
         framebufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
         framebufferCreateInfo.pNext = nullptr;
         framebufferCreateInfo.flags = 0;
-        framebufferCreateInfo.renderPass = renderPass;
-        framebufferCreateInfo.attachmentCount = imageViews.size();
-        framebufferCreateInfo.pAttachments = imageViews.data();
+        framebufferCreateInfo.renderPass = render.renderPass_;
+        framebufferCreateInfo.attachmentCount = views.size();
+        framebufferCreateInfo.pAttachments = views.data();
         framebufferCreateInfo.width = swapchain.displaySize_.width;
         framebufferCreateInfo.height = swapchain.displaySize_.height;
         framebufferCreateInfo.layers = 1;
