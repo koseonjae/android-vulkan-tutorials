@@ -15,7 +15,10 @@
 #include <android/log.h>
 #include <cassert>
 #include <vector>
+#include <array>
 #include "vulkan_wrapper.h"
+
+using namespace std;
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG
@@ -125,77 +128,78 @@ void CreateVulkanDevice( ANativeWindow* platformWindow, VkApplicationInfo* appIn
 
     device_extensions.push_back( "VK_KHR_swapchain" );
 
-    // **********************************************************
-    // Create the Vulkan instance
+    std::vector<const char*> instanceExtensions{ "VK_KHR_surface", "VK_KHR_android_surface" };
+    std::vector<const char*> deviceExtensions{ "VK_KHR_swapchain" };
+
+    VkApplicationInfo applicationInfo;
+    applicationInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    applicationInfo.pNext = nullptr;
+    applicationInfo.pApplicationName = "vktutorial";
+    applicationInfo.applicationVersion = VK_MAKE_VERSION( 1, 0, 0 );
+    applicationInfo.pEngineName = "vktutorial";
+    applicationInfo.engineVersion = VK_MAKE_VERSION( 1, 0, 0 );;
+    applicationInfo.apiVersion = VK_MAKE_VERSION( 1, 0, 0 );
+
     VkInstanceCreateInfo instanceCreateInfo;
     instanceCreateInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     instanceCreateInfo.pNext = nullptr;
-    instanceCreateInfo.pApplicationInfo = appInfo;
-    instanceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(instance_extensions.size());
-    instanceCreateInfo.ppEnabledExtensionNames = instance_extensions.data();
+    instanceCreateInfo.flags = 0;
+    instanceCreateInfo.pApplicationInfo = &applicationInfo;
     instanceCreateInfo.enabledLayerCount = 0;
     instanceCreateInfo.ppEnabledLayerNames = nullptr;
+    instanceCreateInfo.enabledExtensionCount = instanceExtensions.size();
+    instanceCreateInfo.ppEnabledExtensionNames = instanceExtensions.data();
+    vkCreateInstance( &instanceCreateInfo, nullptr, &device.instance_ );
 
-    CALL_VK( vkCreateInstance( &instanceCreateInfo, nullptr, &device.instance_ ) );
-    VkAndroidSurfaceCreateInfoKHR createInfo;
-    createInfo.sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR;
-    createInfo.pNext = nullptr;
-    createInfo.flags = 0;
-    createInfo.window = platformWindow;
+    VkAndroidSurfaceCreateInfoKHR androidSurfaceCreateInfo;
+    androidSurfaceCreateInfo.sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR;
+    androidSurfaceCreateInfo.pNext = nullptr;
+    androidSurfaceCreateInfo.flags = 0;
+    androidSurfaceCreateInfo.window = platformWindow;
+    vkCreateAndroidSurfaceKHR( device.instance_, &androidSurfaceCreateInfo, nullptr, &device.surface_ );
 
-    CALL_VK( vkCreateAndroidSurfaceKHR( device.instance_, &createInfo, nullptr, &device.surface_ ) );
-    // Find one GPU to use:
-    // On Android, every GPU device is equal -- supporting
-    // graphics/compute/present
-    // for this sample, we use the very first GPU device found on the system
-    uint32_t gpuCount = 0;
-    CALL_VK( vkEnumeratePhysicalDevices( device.instance_, &gpuCount, nullptr ) );
-    VkPhysicalDevice tmpGpus[gpuCount];
-    CALL_VK( vkEnumeratePhysicalDevices( device.instance_, &gpuCount, tmpGpus ) );
-    device.physicalDevice_ = tmpGpus[0];  // Pick up the first GPU Device
+    uint32_t gpuCount{ 0 };
+    vkEnumeratePhysicalDevices( device.instance_, &gpuCount, nullptr );
+    vector<VkPhysicalDevice> gpus( gpuCount );
+    vkEnumeratePhysicalDevices( device.instance_, &gpuCount, gpus.data() );
+    device.physicalDevice_ = gpus[0];
 
     vkGetPhysicalDeviceMemoryProperties( device.physicalDevice_, &device.gpuMemoryProperties_ );
 
-    // Find a GFX queue family
-    uint32_t queueFamilyCount;
-    vkGetPhysicalDeviceQueueFamilyProperties( device.physicalDevice_, &queueFamilyCount, nullptr );
-    assert( queueFamilyCount );
-    std::vector<VkQueueFamilyProperties> queueFamilyProperties( queueFamilyCount );
-    vkGetPhysicalDeviceQueueFamilyProperties( device.physicalDevice_, &queueFamilyCount, queueFamilyProperties.data() );
+    uint32_t indexCount{ 0 };
+    vkGetPhysicalDeviceQueueFamilyProperties( device.physicalDevice_, &indexCount, nullptr );
+    vector<VkQueueFamilyProperties> properties( indexCount );
+    vkGetPhysicalDeviceQueueFamilyProperties( device.physicalDevice_, &indexCount, properties.data() );
 
-    uint32_t queueFamilyIndex;
-    for( queueFamilyIndex = 0; queueFamilyIndex < queueFamilyCount; queueFamilyIndex++ )
-    {
-        if( queueFamilyProperties[queueFamilyIndex].queueFlags & VK_QUEUE_GRAPHICS_BIT )
-        {
-            break;
-        }
-    }
-    assert( queueFamilyIndex < queueFamilyCount );
-    device.queueFamilyIndex_ = queueFamilyIndex;
+    auto found = find_if( properties.begin(), properties.end(), [&]( VkQueueFamilyProperties properties ) {
+        return properties.queueFlags & VK_QUEUE_GRAPHICS_BIT;
+    } );
+    assert( found != properties.end() );
+    device.queueFamilyIndex_ = found - properties.begin();
 
-    float priorities[] = { 1.0f, };
-    VkDeviceQueueCreateInfo queueCreateInfo;
-    queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queueCreateInfo.pNext = nullptr;
-    queueCreateInfo.flags = 0;
-    queueCreateInfo.queueCount = 1;
-    queueCreateInfo.queueFamilyIndex = device.queueFamilyIndex_;
-    queueCreateInfo.pQueuePriorities = priorities;
+    array<float, 1> priority{ 1.0f };
+    VkDeviceQueueCreateInfo deviceQueueCreateInfo;
+    deviceQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    deviceQueueCreateInfo.pNext = nullptr;
+    deviceQueueCreateInfo.flags = 0;
+    deviceQueueCreateInfo.queueFamilyIndex = device.queueFamilyIndex_;
+    deviceQueueCreateInfo.queueCount = 1;
+    deviceQueueCreateInfo.pQueuePriorities = priority.data();
 
     VkDeviceCreateInfo deviceCreateInfo;
     deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     deviceCreateInfo.pNext = nullptr;
+    deviceCreateInfo.flags = 0;
     deviceCreateInfo.queueCreateInfoCount = 1;
-    deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
+    deviceCreateInfo.pQueueCreateInfos = &deviceQueueCreateInfo;
     deviceCreateInfo.enabledLayerCount = 0;
     deviceCreateInfo.ppEnabledLayerNames = nullptr;
-    deviceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(device_extensions.size());
-    deviceCreateInfo.ppEnabledExtensionNames = device_extensions.data();
+    deviceCreateInfo.enabledExtensionCount = deviceExtensions.size();
+    deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions.data();
     deviceCreateInfo.pEnabledFeatures = nullptr;
+    vkCreateDevice( device.physicalDevice_, &deviceCreateInfo, nullptr, &device.device_ );
 
-    CALL_VK( vkCreateDevice( device.physicalDevice_, &deviceCreateInfo, nullptr, &device.device_ ) );
-    vkGetDeviceQueue( device.device_, 0, 0, &device.queue_ );
+    vkGetDeviceQueue( device.device_, device.queueFamilyIndex_, 0, &device.queue_ );
 }
 
 void CreateSwapChain( void )
@@ -936,7 +940,6 @@ bool InitVulkan( android_app* app )
     appInfo.engineVersion = VK_MAKE_VERSION( 1, 0, 0 );
     appInfo.pApplicationName = "tutorial05_triangle_window";
     appInfo.pEngineName = "tutorial";
-
 
     // create a device
     CreateVulkanDevice( app->window, &appInfo );
