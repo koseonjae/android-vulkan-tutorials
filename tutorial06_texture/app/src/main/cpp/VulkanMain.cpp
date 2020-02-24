@@ -65,6 +65,7 @@ struct VulkanSwapchainInfo
     uint32_t swapchainLength_;
     VkExtent2D displaySize_;
     VkFormat displayFormat_;
+    VkColorSpaceKHR colorSpace_;
     VkFramebuffer* framebuffers_;
     VkImage* displayImages_;
     VkImageView* displayViews_;
@@ -204,85 +205,96 @@ void CreateVulkanDevice( ANativeWindow* platformWindow, VkApplicationInfo* appIn
 
 void CreateSwapChain( void )
 {
-    LOGI( "->createSwapChain" );
-    memset( &swapchain, 0, sizeof( swapchain ) );
+    // GPU가 android surface에게 지원하는 capability를 가져온다.
+    // GPU가 android surface에게 지원하는 format을 가져온다. => VK_FORMAT_R8G8B8_UNORM format에 대한 index를 얻는다.
+    // => capability와 format 정보를 통해 swapchain을 생성한다
 
-    VkSurfaceCapabilitiesKHR surfaceCapabilities;
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR( device.physicalDevice_, device.surface_, &surfaceCapabilities );
-
-    uint32_t formatCount = 0;
+    uint32_t formatCount{ 0 };
     vkGetPhysicalDeviceSurfaceFormatsKHR( device.physicalDevice_, device.surface_, &formatCount, nullptr );
-    VkSurfaceFormatKHR* formats = new VkSurfaceFormatKHR[formatCount];
-    vkGetPhysicalDeviceSurfaceFormatsKHR( device.physicalDevice_, device.surface_, &formatCount, formats );
-    LOGI( "Got %d formats", formatCount );
+    vector<VkSurfaceFormatKHR> formats( formatCount );
+    vkGetPhysicalDeviceSurfaceFormatsKHR( device.physicalDevice_, device.surface_, &formatCount, formats.data() );
 
-    uint32_t chosenFormat;
-    for( chosenFormat = 0; chosenFormat < formatCount; chosenFormat++ )
-    {
-        if( formats[chosenFormat].format == VK_FORMAT_R8G8B8A8_UNORM )
-            break;
-    }
-    assert( chosenFormat < formatCount );
+    auto found = std::find_if( formats.begin(), formats.end(), [=]( const VkSurfaceFormatKHR& format ) {
+        return format.format == VK_FORMAT_R8G8B8A8_UNORM;
+    } );
+    assert( found != formats.end() );
+    VkSurfaceFormatKHR format = *found;
 
-    swapchain.displaySize_ = surfaceCapabilities.currentExtent;
-    swapchain.displayFormat_ = formats[chosenFormat].format;
+    VkSurfaceCapabilitiesKHR capabilities;
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR( device.physicalDevice_, device.surface_, &capabilities );
 
-    // **********************************************************
-    // Create a swap chain (here we choose the minimum available number of surface
-    // in the chain)
+    swapchain.swapchainLength_ = capabilities.minImageCount;
+    swapchain.displaySize_ = capabilities.currentExtent;
+    swapchain.displayFormat_ = format.format;
+    swapchain.colorSpace_ = format.colorSpace;
+
     VkSwapchainCreateInfoKHR swapchainCreateInfo;
     swapchainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
     swapchainCreateInfo.pNext = nullptr;
+    swapchainCreateInfo.flags = 0;
     swapchainCreateInfo.surface = device.surface_;
-    swapchainCreateInfo.minImageCount = surfaceCapabilities.minImageCount;
-    swapchainCreateInfo.imageFormat = formats[chosenFormat].format;
-    swapchainCreateInfo.imageColorSpace = formats[chosenFormat].colorSpace;
-    swapchainCreateInfo.imageExtent = surfaceCapabilities.currentExtent;
-    swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    swapchainCreateInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+    swapchainCreateInfo.minImageCount = swapchain.swapchainLength_;
+    swapchainCreateInfo.imageFormat = swapchain.displayFormat_;
+    swapchainCreateInfo.imageColorSpace = swapchain.colorSpace_;
+    swapchainCreateInfo.imageExtent = swapchain.displaySize_;
     swapchainCreateInfo.imageArrayLayers = 1;
+    swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     swapchainCreateInfo.queueFamilyIndexCount = 1;
     swapchainCreateInfo.pQueueFamilyIndices = &device.queueFamilyIndex_;
+    swapchainCreateInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+    swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
     swapchainCreateInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+    swapchainCreateInfo.clipped = VK_TRUE;
     swapchainCreateInfo.oldSwapchain = VK_NULL_HANDLE;
-    swapchainCreateInfo.clipped = VK_FALSE;
-
-    CALL_VK( vkCreateSwapchainKHR( device.device_, &swapchainCreateInfo, nullptr, &swapchain.swapchain_ ) );
-
-    // Get the length of the created swap chain
-    CALL_VK( vkGetSwapchainImagesKHR( device.device_, swapchain.swapchain_, &swapchain.swapchainLength_, nullptr ) );
-    delete[] formats;
-    LOGI( "<-createSwapChain" );
+    vkCreateSwapchainKHR( device.device_, &swapchainCreateInfo, nullptr, &swapchain.swapchain_ );
 }
 
 void CreateRenderPass()
 {
-    // -----------------------------------------------------------------
-    // Create render pass
-    VkAttachmentDescription attachmentDescriptions;
-    attachmentDescriptions.format = swapchain.displayFormat_;
-    attachmentDescriptions.samples = VK_SAMPLE_COUNT_1_BIT;
-    attachmentDescriptions.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachmentDescriptions.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    attachmentDescriptions.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachmentDescriptions.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachmentDescriptions.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    attachmentDescriptions.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    // https://vulkan.lunarg.com/doc/view/1.0.37.0/linux/vkspec.chunked/ch07.html
+    // https://lifeisforu.tistory.com/462
+    // renderpass dependency    : 렌더패스가 사용하는 attachment들의 종속성에 의해 렌더패스간의 종속성이 결정된다.
+    // attachment description   : 렌더패스에 attachment를 지정할때의 속성. (포맷, 용도, MSAA, load clear op, save or not, layout etc..)
+    // renderpass object        : vkCreateRenderPass에 의해 생성되는 렌더패스객체는 템플릿으로써 존재함.
+    //                          : VkCmdBeginRenderPass가 호출될때 실제 인스턴스가 생성되고, 각 어태치먼트와 관련된 리소스들을 프레임버퍼로 바인딩합니다
+    // subpass                  : deferred shading 같은 여러개의 파이프라인을 거칠때, 서브패스를 추가하여 renderpass를 구성할 수 있다.
+    //                          : subpass는 정확히 해당 픽셀에만 접근이 가능하고, 주변 픽셀엔 접근이 불가능하다는 제약이 있다. -> blur 같은 효과를 할 수 없음(주변픽셀에도 접근해야하니까)
 
+    // renderpass command를 위해 기본적으로 세 객체가 필요: renderpass, framebuffer, command
+    // 이것의 장점 -> no validation, no exception & dependency management & life cycle management
 
-    VkAttachmentReference colourReference;
-    colourReference.attachment = 0;
-    colourReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    // no validation no exception   : render pass 이외에도 descriptor-instance 쌍을 이루는 경우가 많음 (예를들어 descriptor set layout)
+    //                              : descriptor가 존재하는 이유는 vulkan이 리소스들의 메모리구조를 알지 못하기 때문이다.
+    //                              : descriptor가 메모리에 대한 모든 정보를 가지고 있다.
+    //                              : 이렇게하면 개체를 생성하는 시점에 validation을 수행가능 (리소스를 바인딩하는 시점에서 API 내부적인 검증을 할 필요가 없다.)
+    //                              : => 성능상의 이점
+    // dependency management        : 커맨드 버퍼를 통해 렌더패스간 의존성을 관리 (의존성이 있는 렌더패스를 가지고 있는 커맨드버퍼들을 동기화)
+    // life cycle management        : 멀티스레딩 환경에서 렌더패스 인스턴스, 커맨드 버퍼, 프레임 버퍼 등의 생명주기를 관리하는데 용이
+
+    VkAttachmentDescription colorAttachmentDescription;
+    colorAttachmentDescription.flags = 0;
+    colorAttachmentDescription.format = swapchain.displayFormat_;
+    colorAttachmentDescription.samples = VK_SAMPLE_COUNT_1_BIT;
+    colorAttachmentDescription.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachmentDescription.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAttachmentDescription.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    colorAttachmentDescription.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    colorAttachmentDescription.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    colorAttachmentDescription.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    VkAttachmentReference colorAttachmentReference;
+    colorAttachmentReference.attachment = 0;
+    colorAttachmentReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
     VkSubpassDescription subpassDescription;
-    subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpassDescription.flags = 0;
+    subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpassDescription.inputAttachmentCount = 0;
     subpassDescription.pInputAttachments = nullptr;
     subpassDescription.colorAttachmentCount = 1;
-    subpassDescription.pColorAttachments = &colourReference;
-    subpassDescription.pResolveAttachments = nullptr;
+    subpassDescription.pColorAttachments = &colorAttachmentReference;
+    subpassDescription.pResolveAttachments = 0;
     subpassDescription.pDepthStencilAttachment = nullptr;
     subpassDescription.preserveAttachmentCount = 0;
     subpassDescription.pPreserveAttachments = nullptr;
@@ -290,14 +302,14 @@ void CreateRenderPass()
     VkRenderPassCreateInfo renderPassCreateInfo;
     renderPassCreateInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
     renderPassCreateInfo.pNext = nullptr;
+    renderPassCreateInfo.flags = 0;
     renderPassCreateInfo.attachmentCount = 1;
-    renderPassCreateInfo.pAttachments = &attachmentDescriptions;
+    renderPassCreateInfo.pAttachments = &colorAttachmentDescription;
     renderPassCreateInfo.subpassCount = 1;
     renderPassCreateInfo.pSubpasses = &subpassDescription;
     renderPassCreateInfo.dependencyCount = 0;
     renderPassCreateInfo.pDependencies = nullptr;
-
-    CALL_VK( vkCreateRenderPass( device.device_, &renderPassCreateInfo, nullptr, &render.renderPass_ ) );
+    vkCreateRenderPass( device.device_, &renderPassCreateInfo, nullptr, &render.renderPass_ );
 }
 
 void CreateFrameBuffers( VkRenderPass& renderPass, VkImageView depthView = VK_NULL_HANDLE )
