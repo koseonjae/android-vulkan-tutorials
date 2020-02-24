@@ -180,7 +180,7 @@ void CreateVulkanDevice( ANativeWindow* platformWindow, VkApplicationInfo* appIn
     }
     assert( queueFamilyIndex < queueFamilyCount );
     device.queueFamilyIndex_ = queueFamilyIndex;
-    // Create a logical device (vulkan device)
+
     float priorities[] = { 1.0f, };
     VkDeviceQueueCreateInfo queueCreateInfo;
     queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
@@ -189,7 +189,6 @@ void CreateVulkanDevice( ANativeWindow* platformWindow, VkApplicationInfo* appIn
     queueCreateInfo.queueCount = 1;
     queueCreateInfo.queueFamilyIndex = device.queueFamilyIndex_;
     queueCreateInfo.pQueuePriorities = priorities;
-
 
     VkDeviceCreateInfo deviceCreateInfo;
     deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -201,7 +200,6 @@ void CreateVulkanDevice( ANativeWindow* platformWindow, VkApplicationInfo* appIn
     deviceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(device_extensions.size());
     deviceCreateInfo.ppEnabledExtensionNames = device_extensions.data();
     deviceCreateInfo.pEnabledFeatures = nullptr;
-
 
     CALL_VK( vkCreateDevice( device.gpuDevice_, &deviceCreateInfo, nullptr, &device.device_ ) );
     vkGetDeviceQueue( device.device_, 0, 0, &device.queue_ );
@@ -648,13 +646,14 @@ bool CreateBuffers( void )
     VkMemoryRequirements memReq;
     vkGetBufferMemoryRequirements( device.device_, buffers.vertexBuf_, &memReq );
 
-    VkMemoryAllocateInfo allocInfo{ .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, .pNext = nullptr, .allocationSize = memReq.size, .memoryTypeIndex = 0,  // Memory type assigned in the next step
-    };
+    VkMemoryAllocateInfo allocInfo;
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.pNext = nullptr;
+    allocInfo.allocationSize = memReq.size;
+    allocInfo.memoryTypeIndex = 0;
 
-    // Assign the proper memory type for that buffer
     MapMemoryTypeToIndex( memReq.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &allocInfo.memoryTypeIndex );
 
-    // Allocate memory for the buffer
     VkDeviceMemory deviceMemory;
     CALL_VK( vkAllocateMemory( device.device_, &allocInfo, nullptr, &deviceMemory ) );
 
@@ -667,7 +666,7 @@ bool CreateBuffers( void )
     return true;
 }
 
-VkResult CreateGraphicsPipeline( void )
+void CreateGraphicsPipeline( void )
 {
     memset( &gfxPipeline, 0, sizeof( gfxPipeline ) );
 
@@ -741,8 +740,6 @@ VkResult CreateGraphicsPipeline( void )
     viewportInfo.scissorCount = 1;
     viewportInfo.pScissors = &scissor;
 
-
-    // Specify multisample info
     VkSampleMask sampleMask = ~0u;
     VkPipelineMultisampleStateCreateInfo multisampleInfo;
     multisampleInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
@@ -754,7 +751,6 @@ VkResult CreateGraphicsPipeline( void )
     multisampleInfo.alphaToCoverageEnable = VK_FALSE;
     multisampleInfo.alphaToOneEnable = VK_FALSE;
 
-    // Specify color blend state
     VkPipelineColorBlendAttachmentState attachmentStates{ .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT, .blendEnable = VK_FALSE, };
     VkPipelineColorBlendStateCreateInfo colorBlendInfo;
     colorBlendInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
@@ -765,7 +761,6 @@ VkResult CreateGraphicsPipeline( void )
     colorBlendInfo.pAttachments = &attachmentStates;
     colorBlendInfo.flags = 0;
 
-    // Specify rasterizer info
     VkPipelineRasterizationStateCreateInfo rasterInfo;
     rasterInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
     rasterInfo.pNext = nullptr;
@@ -777,16 +772,12 @@ VkResult CreateGraphicsPipeline( void )
     rasterInfo.depthBiasEnable = VK_FALSE;
     rasterInfo.lineWidth = 1;
 
-
-    // Specify input assembler state
     VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo;
     inputAssemblyInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
     inputAssemblyInfo.pNext = nullptr;
     inputAssemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     inputAssemblyInfo.primitiveRestartEnable = VK_FALSE;
 
-
-    // Specify vertex input state
     VkVertexInputBindingDescription vertex_input_bindings;
     vertex_input_bindings.binding = 0;
     vertex_input_bindings.stride = 5 * sizeof( float );
@@ -811,8 +802,6 @@ VkResult CreateGraphicsPipeline( void )
     vertexInputInfo.vertexAttributeDescriptionCount = 2;
     vertexInputInfo.pVertexAttributeDescriptions = vertex_input_attributes;
 
-
-    // Create the pipeline cache
     VkPipelineCacheCreateInfo pipelineCacheInfo;
     pipelineCacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
     pipelineCacheInfo.pNext = nullptr;
@@ -822,7 +811,6 @@ VkResult CreateGraphicsPipeline( void )
 
     CALL_VK( vkCreatePipelineCache( device.device_, &pipelineCacheInfo, nullptr, &gfxPipeline.cache_ ) );
 
-// Create the pipeline
     VkGraphicsPipelineCreateInfo pipelineCreateInfo;
     pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     pipelineCreateInfo.pNext = nullptr;
@@ -845,13 +833,10 @@ VkResult CreateGraphicsPipeline( void )
     pipelineCreateInfo.basePipelineIndex = 0;
 
 
-    VkResult pipelineResult = vkCreateGraphicsPipelines( device.device_, gfxPipeline.cache_, 1, &pipelineCreateInfo, nullptr, &gfxPipeline.pipeline_ );
+    CALL_VK( vkCreateGraphicsPipelines( device.device_, gfxPipeline.cache_, 1, &pipelineCreateInfo, nullptr, &gfxPipeline.pipeline_ ) );
 
-// We don't need the shaders anymore, we can release their memory
     vkDestroyShaderModule( device.device_, vertexShader, nullptr );
     vkDestroyShaderModule( device.device_, fragmentShader, nullptr );
-
-    return pipelineResult;
 }
 
 VkResult CreateDescriptorSet( void )
