@@ -444,7 +444,14 @@ VkResult loadShaderFromFile( const char* filePath, VkShaderModule* shaderOut, Sh
 void CreateGraphicsPipeline( void )
 {
     // shader resource          : 리소스(버퍼와 이미지 뷰)와 쉐이더를 연결하는데 필요한 변수
-    // Descriptor Set Layout    : 쉐이더 리소스를 관리
+
+    // Descriptor               : 디스크립터 세트 개체로 구성되어있다
+    //                          : 셰이더와 통신하기 위한 프로토콜을 정의하며, 위치 바인딩을 사용해 리소스 메모리를 셰이더와 연결하는 자동 메커니즘 제공
+    //                          : 즉, App과 쉐이더 프로그램의 데이터 통신을 위한 객체
+    // Descriptor Set           : 쉐이더와 리소스를 연결
+    //                          : Descriptor Set Layout을 사용하여, 레이아웃 바인딩으로 들어오는 리소스 데이터를 읽고 해석하는 것을 돕는다
+    // Descriptor Set Layout    : 쉐이더가 지정된 위치의 리소스를 읽을 수 있게 하는 인터페이스 제공
+
     // VkPipelineLayout         : 파이프라인 내에서 디스크립터 세트 레이아웃의 순서를 관리
     // VkPipelineCache          : PCO. 저장된 파이프라인을 빠르게 검색하고 재사용하기 위한 매커니즘 제공 (중복 파이프라인 생성을 피할 수 있음)
     // VkPipeline               : blend, depth/stencil test, primitive assembly, viewport 등의 하드웨어 설정 제어 기능 제공
