@@ -69,7 +69,6 @@ struct VulkanRenderInfo
     VkRenderPass renderPass_;
     VkCommandPool cmdPool_;
     VkCommandBuffer* cmdBuffer_;
-    uint32_t cmdBufferLen_;
     VkSemaphore semaphore_;
     VkFence fence_;
 };
@@ -648,27 +647,19 @@ void CreateCommand( void )
     commandPoolCreateInfo.pNext = nullptr;
     commandPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     commandPoolCreateInfo.queueFamilyIndex = device.queueFamilyIndex_;
-    VkResult result = vkCreateCommandPool( device.device_, &commandPoolCreateInfo, nullptr, &render.cmdPool_ );
-    assert( VK_SUCCESS == result );
+    vkCreateCommandPool( device.device_, &commandPoolCreateInfo, nullptr, &render.cmdPool_ );
 
-    render.cmdBufferLen_ = swapchain.swapchainLength_;
-    render.cmdBuffer_ = new VkCommandBuffer[render.cmdBufferLen_];
+    render.cmdBuffer_ = new VkCommandBuffer[swapchain.swapchainLength_];
 
     VkCommandBufferAllocateInfo commandBufferAllocateInfo;
     commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     commandBufferAllocateInfo.pNext = nullptr;
     commandBufferAllocateInfo.commandPool = render.cmdPool_;
     commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    commandBufferAllocateInfo.commandBufferCount = render.cmdBufferLen_;
+    commandBufferAllocateInfo.commandBufferCount = swapchain.swapchainLength_;
     vkAllocateCommandBuffers( device.device_, &commandBufferAllocateInfo, render.cmdBuffer_ );
 
-    VkClearValue clearVals;
-    clearVals.color.float32[0] = 0;
-    clearVals.color.float32[1] = 0;
-    clearVals.color.float32[2] = 1;
-    clearVals.color.float32[3] = 1;
-
-    for( uint32_t i = 0; i < render.cmdBufferLen_; ++i )
+    for( uint32_t i = 0; i < swapchain.swapchainLength_; ++i )
     {
         VkCommandBufferBeginInfo commandBufferBeginInfo;
         commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -677,23 +668,28 @@ void CreateCommand( void )
         commandBufferBeginInfo.pInheritanceInfo = nullptr;
         vkBeginCommandBuffer( render.cmdBuffer_[i], &commandBufferBeginInfo );
 
-        setImageLayout( render.cmdBuffer_[i], swapchain.displayImages_[i], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT );
+        setImageLayout( render.cmdBuffer_[i], swapchain.displayImages_.at( i ), VK_IMAGE_LAYOUT_PREINITIALIZED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT );
+
+        VkClearValue clearValue;
+        clearValue.color.float32[0] = 0.0f;
+        clearValue.color.float32[1] = 0.0f;
+        clearValue.color.float32[2] = 0.0f;
+        clearValue.color.float32[3] = 1.0f;
 
         VkRenderPassBeginInfo renderPassBeginInfo;
         renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         renderPassBeginInfo.pNext = nullptr;
         renderPassBeginInfo.renderPass = render.renderPass_;
         renderPassBeginInfo.framebuffer = swapchain.framebuffers_.at( i );
+        renderPassBeginInfo.renderArea.offset = { .x = 0, .y = 0 };
         renderPassBeginInfo.renderArea.extent = swapchain.displaySize_;
-        renderPassBeginInfo.renderArea.offset.x = 0;
-        renderPassBeginInfo.renderArea.offset.y = 0;
         renderPassBeginInfo.clearValueCount = 1;
-        renderPassBeginInfo.pClearValues = &clearVals;
+        renderPassBeginInfo.pClearValues = &clearValue;
         vkCmdBeginRenderPass( render.cmdBuffer_[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE );
 
         vkCmdBindPipeline( render.cmdBuffer_[i], VK_PIPELINE_BIND_POINT_GRAPHICS, gfxPipeline.pipeline_ );
 
-        VkDeviceSize offset{ 0 };
+        VkDeviceSize offset = 0;
         vkCmdBindVertexBuffers( render.cmdBuffer_[i], 0, 1, &buffers.vertexBuf_, &offset );
 
         vkCmdDraw( render.cmdBuffer_[i], 3, 1, 0, 0 );
@@ -704,20 +700,16 @@ void CreateCommand( void )
     }
 
     VkFenceCreateInfo fenceCreateInfo;
-    fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
     fenceCreateInfo.pNext = nullptr;
     fenceCreateInfo.flags = 0;
-    result = vkCreateFence( device.device_, &fenceCreateInfo, nullptr, &render.fence_ );
-    assert( VK_SUCCESS == result );
+    vkCreateFence( device.device_, &fenceCreateInfo, nullptr, &render.fence_ );
 
     VkSemaphoreCreateInfo semaphoreCreateInfo;
     semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
     semaphoreCreateInfo.pNext = nullptr;
     semaphoreCreateInfo.flags = 0;
-    result = vkCreateSemaphore( device.device_, &semaphoreCreateInfo, nullptr, &render.semaphore_ );
-    assert( VK_SUCCESS == result );
-
-    device.initialized_ = true;
+    vkCreateSemaphore( device.device_, &semaphoreCreateInfo, nullptr, &render.semaphore_ );
 }
 
 // Initialize vulkan device context
