@@ -24,7 +24,6 @@
 #include "CreateShaderModule.h"
 #include "VulkanMain.hpp"
 
-// Android log function wrappers
 static const char* kTAG = "Vulkan-Tutorial06";
 #define LOGI( ... ) \
   ((void)__android_log_print(ANDROID_LOG_INFO, kTAG, __VA_ARGS__))
@@ -42,20 +41,16 @@ static const char* kTAG = "Vulkan-Tutorial06";
     assert(false);                                                    \
   }
 
-// A macro to check value is VK_SUCCESS
-// Used also for non-vulkan functions but return VK_SUCCESS
 #define VK_CHECK( x ) CALL_VK(x)
 
 struct VulkanDeviceInfo
 {
     bool initialized_;
-
     VkInstance instance_;
-    VkPhysicalDevice gpuDevice_;
+    VkPhysicalDevice physicalDevice_;
     VkPhysicalDeviceMemoryProperties gpuMemoryProperties_;
     VkDevice device_;
     uint32_t queueFamilyIndex_;
-
     VkSurfaceKHR surface_;
     VkQueue queue_;
 };
@@ -65,10 +60,8 @@ struct VulkanSwapchainInfo
 {
     VkSwapchainKHR swapchain_;
     uint32_t swapchainLength_;
-
     VkExtent2D displaySize_;
     VkFormat displayFormat_;
-
     VkFramebuffer* framebuffers_;
     VkImage* displayImages_;
     VkImageView* displayViews_;
@@ -159,16 +152,16 @@ void CreateVulkanDevice( ANativeWindow* platformWindow, VkApplicationInfo* appIn
     CALL_VK( vkEnumeratePhysicalDevices( device.instance_, &gpuCount, nullptr ) );
     VkPhysicalDevice tmpGpus[gpuCount];
     CALL_VK( vkEnumeratePhysicalDevices( device.instance_, &gpuCount, tmpGpus ) );
-    device.gpuDevice_ = tmpGpus[0];  // Pick up the first GPU Device
+    device.physicalDevice_ = tmpGpus[0];  // Pick up the first GPU Device
 
-    vkGetPhysicalDeviceMemoryProperties( device.gpuDevice_, &device.gpuMemoryProperties_ );
+    vkGetPhysicalDeviceMemoryProperties( device.physicalDevice_, &device.gpuMemoryProperties_ );
 
     // Find a GFX queue family
     uint32_t queueFamilyCount;
-    vkGetPhysicalDeviceQueueFamilyProperties( device.gpuDevice_, &queueFamilyCount, nullptr );
+    vkGetPhysicalDeviceQueueFamilyProperties( device.physicalDevice_, &queueFamilyCount, nullptr );
     assert( queueFamilyCount );
     std::vector<VkQueueFamilyProperties> queueFamilyProperties( queueFamilyCount );
-    vkGetPhysicalDeviceQueueFamilyProperties( device.gpuDevice_, &queueFamilyCount, queueFamilyProperties.data() );
+    vkGetPhysicalDeviceQueueFamilyProperties( device.physicalDevice_, &queueFamilyCount, queueFamilyProperties.data() );
 
     uint32_t queueFamilyIndex;
     for( queueFamilyIndex = 0; queueFamilyIndex < queueFamilyCount; queueFamilyIndex++ )
@@ -201,7 +194,7 @@ void CreateVulkanDevice( ANativeWindow* platformWindow, VkApplicationInfo* appIn
     deviceCreateInfo.ppEnabledExtensionNames = device_extensions.data();
     deviceCreateInfo.pEnabledFeatures = nullptr;
 
-    CALL_VK( vkCreateDevice( device.gpuDevice_, &deviceCreateInfo, nullptr, &device.device_ ) );
+    CALL_VK( vkCreateDevice( device.physicalDevice_, &deviceCreateInfo, nullptr, &device.device_ ) );
     vkGetDeviceQueue( device.device_, 0, 0, &device.queue_ );
 }
 
@@ -211,12 +204,12 @@ void CreateSwapChain( void )
     memset( &swapchain, 0, sizeof( swapchain ) );
 
     VkSurfaceCapabilitiesKHR surfaceCapabilities;
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR( device.gpuDevice_, device.surface_, &surfaceCapabilities );
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR( device.physicalDevice_, device.surface_, &surfaceCapabilities );
 
     uint32_t formatCount = 0;
-    vkGetPhysicalDeviceSurfaceFormatsKHR( device.gpuDevice_, device.surface_, &formatCount, nullptr );
+    vkGetPhysicalDeviceSurfaceFormatsKHR( device.physicalDevice_, device.surface_, &formatCount, nullptr );
     VkSurfaceFormatKHR* formats = new VkSurfaceFormatKHR[formatCount];
-    vkGetPhysicalDeviceSurfaceFormatsKHR( device.gpuDevice_, device.surface_, &formatCount, formats );
+    vkGetPhysicalDeviceSurfaceFormatsKHR( device.physicalDevice_, device.surface_, &formatCount, formats );
     LOGI( "Got %d formats", formatCount );
 
     uint32_t chosenFormat;
@@ -391,7 +384,7 @@ VkResult LoadTextureFromFile( const char* filePath, struct texture_object* tex_o
     // Check for linear supportability
     VkFormatProperties props;
     bool needBlit = true;
-    vkGetPhysicalDeviceFormatProperties( device.gpuDevice_, kTexFmt, &props );
+    vkGetPhysicalDeviceFormatProperties( device.physicalDevice_, kTexFmt, &props );
     assert( ( props.linearTilingFeatures | props.optimalTilingFeatures ) & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT );
 
     if( props.linearTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT )
@@ -607,7 +600,7 @@ void CreateTexture( void )
 bool MapMemoryTypeToIndex( uint32_t typeBits, VkFlags requirements_mask, uint32_t* typeIndex )
 {
     VkPhysicalDeviceMemoryProperties memoryProperties;
-    vkGetPhysicalDeviceMemoryProperties( device.gpuDevice_, &memoryProperties );
+    vkGetPhysicalDeviceMemoryProperties( device.physicalDevice_, &memoryProperties );
     // Search memtypes to find first index with those properties
     for( uint32_t i = 0; i < 32; i++ )
     {
