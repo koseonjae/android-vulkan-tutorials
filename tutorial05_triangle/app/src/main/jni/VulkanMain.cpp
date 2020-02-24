@@ -776,31 +776,28 @@ bool VulkanDrawFrame( void )
     //              : fence, semaphore => 시작할때 unsignaled로 하고, 끝나면 signaled로 변경
     //              : vkAcquireNextImageKHR가 호출될때 세마포어가 unsignaled상태이면 singaled가 될때까지 기다린다? 아니면 미정의 동작?
 
-    uint32_t index{ 0 };
-    VkResult result = vkAcquireNextImageKHR( device.device_, swapchain.swapchain_, UINT64_MAX, render.semaphore_, render.fence_, &index );
-    assert( VK_SUCCESS == result );
+    uint32_t index = 0;
+    vkAcquireNextImageKHR( device.device_, swapchain.swapchain_, UINT64_MAX, render.semaphore_, render.fence_, &index );
 
-    result = vkResetFences( device.device_, 1, &render.fence_ );
-    assert( VK_SUCCESS == result );
+    vkResetFences( device.device_, 1, &render.fence_ );
 
-    VkPipelineStageFlags waitStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    VkPipelineStageFlags waitMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+
     VkSubmitInfo submitInfo;
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.pNext = nullptr;
     submitInfo.waitSemaphoreCount = 1;
     submitInfo.pWaitSemaphores = &render.semaphore_;
-    submitInfo.pWaitDstStageMask = &waitStageMask;
+    submitInfo.pWaitDstStageMask = &waitMask;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &render.cmdBuffer_[index];
     submitInfo.signalSemaphoreCount = 0;
     submitInfo.pSignalSemaphores = nullptr;
-    result = vkQueueSubmit( device.queue_, 1, &submitInfo, render.fence_ );
-    assert( VK_SUCCESS == result );
+    vkQueueSubmit( device.queue_, 1, &submitInfo, render.fence_ );
 
-    result = vkWaitForFences( device.device_, 1, &render.fence_, VK_TRUE, UINT64_MAX );
-    assert( VK_SUCCESS == result );
+    vkWaitForFences( device.device_, 1, &render.fence_, VK_TRUE, UINT64_MAX );
 
-    VkResult presentResult;
+    VkResult result;
     VkPresentInfoKHR presentInfo;
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     presentInfo.pNext = nullptr;
@@ -809,11 +806,8 @@ bool VulkanDrawFrame( void )
     presentInfo.swapchainCount = 1;
     presentInfo.pSwapchains = &swapchain.swapchain_;
     presentInfo.pImageIndices = &index;
-    presentInfo.pResults = &presentResult;
-    result = vkQueuePresentKHR( device.queue_, &presentInfo );
-    assert( VK_SUCCESS == result );
-    assert( VK_SUCCESS == presentResult );
-
+    presentInfo.pResults = &result;
+    vkQueuePresentKHR( device.queue_, &presentInfo );
     return true;
 }
 
