@@ -645,10 +645,13 @@ bool MapMemoryTypeToIndex( uint32_t typeBits, VkFlags requirements_mask, uint32_
 
 bool CreateBuffers( void )
 {
-    // Vertex positions
+    // VkBuffer             : size, usage, sharding mode, 어떤 property를 가진 queue에서 접근할지 등을 정의
+    //                      : 이 버퍼를 cpu에서 write할 수 있도록 하려면, VkDeviceMemory를 만들어서 cpu address와 binding해야함
+    // VkDeviceMemory       : MemoryRequirements와 allocationInfo를 통해 device memory 객체를 생성한다.
+    //                      : cpu voide pointer와 mapping하여 cpu에서 VkBuffer 메모리 write 할 수 있게 한다.
+
     const float vertexData[] = { -1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f, -1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.5f, 1.0f, };
 
-    // Create a vertex buffer
     VkBufferCreateInfo createBufferInfo;
     createBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     createBufferInfo.pNext = nullptr;
