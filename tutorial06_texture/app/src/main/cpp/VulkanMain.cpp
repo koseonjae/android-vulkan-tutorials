@@ -66,9 +66,9 @@ struct VulkanSwapchainInfo
     VkExtent2D displaySize_;
     VkFormat displayFormat_;
     VkColorSpaceKHR colorSpace_;
-    VkFramebuffer* framebuffers_;
-    VkImage* displayImages_;
-    VkImageView* displayViews_;
+    std::vector<VkImage> displayImages_;
+    std::vector<VkImageView> displayViews_;
+    std::vector<VkFramebuffer> framebuffers_;
 };
 VulkanSwapchainInfo swapchain;
 
@@ -314,55 +314,64 @@ void CreateRenderPass()
 
 void CreateFrameBuffers( VkRenderPass& renderPass, VkImageView depthView = VK_NULL_HANDLE )
 {
-    // query display attachment to swapchain
-    uint32_t SwapchainImagesCount = 0;
-    CALL_VK( vkGetSwapchainImagesKHR( device.device_, swapchain.swapchain_, &SwapchainImagesCount, nullptr ) );
-    swapchain.displayImages_ = new VkImage[SwapchainImagesCount];
-    CALL_VK( vkGetSwapchainImagesKHR( device.device_, swapchain.swapchain_, &SwapchainImagesCount, swapchain.displayImages_ ) );
+    // https://stackoverflow.com/questions/39557141/what-is-the-difference-between-framebuffer-and-image-in-vulkan
+    // VkImage          : 어떤 VkMemory가 사용되는지와, 어떤 texel format인지를 정의한다.
+    //                  : swapchain이 생성될때 내부적으로 swapchainLen만큼 image생성 (swapchain을 생성할때 VkImage 생성에 대한 정보를 넘겨줬음)
+    // VkImageView      : VkImage의 어느 부분을 사용할지 정의한다. & 호환불가능한 interface와 매치할 수 있도록 정의 (format 변환을 통해)
+    //                  : image로부터 imageView생성
+    // VKFramebuffer    : 어떤 imageView가 attachment가 될 것이며, 어떤 format으로 쓰일지 결정한다.
 
-    // create image view for each swapchain image
-    swapchain.displayViews_ = new VkImageView[SwapchainImagesCount];
-    for( uint32_t i = 0; i < SwapchainImagesCount; i++ )
+    // Swapchain Image  : 스왑 체인 이미지는 드라이버가 소유권을 가지고 있으며 할당, 해제할 수 없다.
+    //                  : 단지 acquire & present operation 할때 잠시 빌려서 쓰는것 뿐임
+
+    // baseArrayLayer   : VkImage
+    //                      : imageArrayLayers  : VkImage가 갖는 image의 수 (multi view나 stereo surface가 아니면 1 사용)
+    //                  : VkImageSubresourceRange
+    //                      : layerCount        : VkImage가 멀티뷰일때 그중 몇개의 이미지를 사용하는가
+    //                      : baseArrayLayer    : 사용하는 이미지들(imageArrayLayers)중 몇개의 이미지를 접근 가능한 이미지로 지정할것인가
+
+    swapchain.displayImages_.resize( swapchain.swapchainLength_ );
+    swapchain.displayViews_.resize( swapchain.swapchainLength_ );
+    swapchain.framebuffers_.resize( swapchain.swapchainLength_ );
+    vkGetSwapchainImagesKHR( device.device_, swapchain.swapchain_, &swapchain.swapchainLength_, swapchain.displayImages_.data() );
+
+    for( uint32_t i = 0; i < swapchain.swapchainLength_; ++i )
     {
-        VkImageViewCreateInfo viewCreateInfo;
-        viewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        viewCreateInfo.pNext = nullptr;
-        viewCreateInfo.image = swapchain.displayImages_[i];
-        viewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        viewCreateInfo.format = swapchain.displayFormat_;
-        viewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_R;
-        viewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_G;
-        viewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_B;
-        viewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_A;
+        VkImageViewCreateInfo imageViewCreateInfo;
+        imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        imageViewCreateInfo.pNext = nullptr;
+        imageViewCreateInfo.flags = 0;
+        imageViewCreateInfo.image = swapchain.displayImages_.at( i );
+        imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        imageViewCreateInfo.format = swapchain.displayFormat_;
+        imageViewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_R;
+        imageViewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_G;
+        imageViewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_B;
+        imageViewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_A;
+        imageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
+        imageViewCreateInfo.subresourceRange.levelCount = 1;
+        imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
+        imageViewCreateInfo.subresourceRange.layerCount = 1;
+        vkCreateImageView( device.device_, &imageViewCreateInfo, nullptr, &swapchain.displayViews_.at( i ) );
 
-        viewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        viewCreateInfo.subresourceRange.baseMipLevel = 0;
-        viewCreateInfo.subresourceRange.levelCount = 1;
-        viewCreateInfo.subresourceRange.baseArrayLayer = 0;
-        viewCreateInfo.subresourceRange.layerCount = 1;
+        vector<VkImageView> views{ swapchain.displayViews_.at( i ) };
+        if( depthView )
+        {
+            views.push_back( depthView );
+        }
 
-        viewCreateInfo.flags = 0;
-
-        CALL_VK( vkCreateImageView( device.device_, &viewCreateInfo, nullptr, &swapchain.displayViews_[i] ) );
-    }
-
-    // create a framebuffer from each swapchain image
-    swapchain.framebuffers_ = new VkFramebuffer[swapchain.swapchainLength_];
-    for( uint32_t i = 0; i < swapchain.swapchainLength_; i++ )
-    {
-        VkImageView attachments[2] = { swapchain.displayViews_[i], depthView, };
-        VkFramebufferCreateInfo fbCreateInfo;
-        fbCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        fbCreateInfo.pNext = nullptr;
-        fbCreateInfo.renderPass = renderPass;
-        fbCreateInfo.layers = 1;
-        fbCreateInfo.attachmentCount = 1,  // 2 if using dept;
-                fbCreateInfo.pAttachments = attachments;
-        fbCreateInfo.width = static_cast<uint32_t>(swapchain.displaySize_.width);
-        fbCreateInfo.height = static_cast<uint32_t>(swapchain.displaySize_.height);
-        fbCreateInfo.attachmentCount = ( depthView == VK_NULL_HANDLE ? 1 : 2 );
-
-        CALL_VK( vkCreateFramebuffer( device.device_, &fbCreateInfo, nullptr, &swapchain.framebuffers_[i] ) );
+        VkFramebufferCreateInfo framebufferCreateInfo;
+        framebufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebufferCreateInfo.pNext = nullptr;
+        framebufferCreateInfo.flags = 0;
+        framebufferCreateInfo.renderPass = render.renderPass_;
+        framebufferCreateInfo.attachmentCount = views.size();
+        framebufferCreateInfo.pAttachments = views.data();
+        framebufferCreateInfo.width = swapchain.displaySize_.width;
+        framebufferCreateInfo.height = swapchain.displaySize_.height;
+        framebufferCreateInfo.layers = 1;
+        vkCreateFramebuffer( device.device_, &framebufferCreateInfo, nullptr, &swapchain.framebuffers_.at( i ) );
     }
 }
 
@@ -1073,9 +1082,6 @@ void DeleteSwapChain( void )
         vkDestroyFramebuffer( device.device_, swapchain.framebuffers_[i], nullptr );
         vkDestroyImageView( device.device_, swapchain.displayViews_[i], nullptr );
     }
-    delete[] swapchain.framebuffers_;
-    delete[] swapchain.displayViews_;
-    delete[] swapchain.displayImages_;
 
     vkDestroySwapchainKHR( device.device_, swapchain.swapchain_, nullptr );
 }
