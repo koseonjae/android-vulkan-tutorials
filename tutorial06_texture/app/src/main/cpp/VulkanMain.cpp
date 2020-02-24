@@ -121,13 +121,19 @@ void setImageLayout( VkCommandBuffer cmdBuffer, VkImage image, VkImageLayout old
 
 void CreateVulkanDevice( ANativeWindow* platformWindow, VkApplicationInfo* appInfo )
 {
-    std::vector<const char*> instance_extensions;
-    std::vector<const char*> device_extensions;
-
-    instance_extensions.push_back( "VK_KHR_surface" );
-    instance_extensions.push_back( "VK_KHR_android_surface" );
-
-    device_extensions.push_back( "VK_KHR_swapchain" );
+    // instance         : vulkan instance. surface와 physical device 생성에 쓰임
+    // android surface  : ANativeWindow와 vulkan instance를 통해 surface 생성
+    // physical device  : gpu. 메모리 정보와 command submit을 위한 queue 정보를 얻는데 쓰임
+    // queue family     : queue family는 동일한 property를 가진 queue들의 집합이다. (queue의 property에 따라 수행할 수 있는 command의 종류가 다르다.)
+    //                  : 여기에선 graphics property를 가진 큐들의 집합(queue family)을 구해서 사용한다. => graphics command를 submit할꺼니까
+    // device           : graphics queue property를 가진 queue family를 가지고 device를 초기화 했음 -> graphics용 device 초기화
+    // layer            : 특정한(주로 검증) 목적을 위해 구성된 vulkan 소프트웨어 계층
+    //                  : 레이어는 기존 vulkan api에 연결되고, 지정된 레이어와 연결된 vulkan 명령체인에 삽입됨
+    //                  : 예를들어 vulkan api로 올바른 파라미터가 들어오는지 검증한다.
+    //                  : 이러한 레이어는 릴리즈에선 사용하지 않게 설정하면 불필요한 오버헤드를 줄일 수 있다.
+    // Commands that enumerate instance properties, or that accept a VkInstance object as a parameter, are considered instance-level functionality.
+    // Commands that enumerate physical device properties, or that accept a VkDevice object or any of a device’s child objects as a parameter,
+    // are considered device-level functionality.
 
     std::vector<const char*> instanceExtensions{ "VK_KHR_surface", "VK_KHR_android_surface" };
     std::vector<const char*> deviceExtensions{ "VK_KHR_swapchain" };
@@ -312,7 +318,7 @@ void CreateRenderPass()
     vkCreateRenderPass( device.device_, &renderPassCreateInfo, nullptr, &render.renderPass_ );
 }
 
-void CreateFrameBuffers( VkRenderPass& renderPass, VkImageView depthView = VK_NULL_HANDLE )
+void CreateFrameBuffers( VkImageView depthView = VK_NULL_HANDLE )
 {
     // https://stackoverflow.com/questions/39557141/what-is-the-difference-between-framebuffer-and-image-in-vulkan
     // VkImage          : 어떤 VkMemory가 사용되는지와, 어떤 texel format인지를 정의한다.
@@ -624,6 +630,14 @@ void CreateTexture( void )
 
 bool MapMemoryTypeToIndex( uint32_t typeBits, VkFlags requirements_mask, uint32_t* typeIndex )
 {
+    // GPU가 가진 메모리 타입중에, 필요로하는 메모리 특성을 모두 가지고 있는 메모리 타입의 index를 반환한다.
+    // requirementMask                      : 필요한 메모리 특성을 flag로 전달
+
+    // VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT  : 이 타입으로 할당된 메모리는 vkMapMemory를 통해 host가 접근 가능하다.
+    // VK_MEMORY_PROPERTY_HOST_COHERENT_BIT : host와 device가 밀착된 메모리
+    //                                      : 호스트게 메모리에 쓴 글을 flush하지 않아도 device가 바로 읽을 수 있고
+    //                                      : device가 메모리에 쓴 글도 호스트에게 visible함
+
     VkPhysicalDeviceMemoryProperties memoryProperties;
     vkGetPhysicalDeviceMemoryProperties( device.physicalDevice_, &memoryProperties );
     // Search memtypes to find first index with those properties
@@ -689,6 +703,27 @@ bool CreateBuffers( void )
 
 void CreateGraphicsPipeline( void )
 {
+    // shader resource          : 리소스(버퍼와 이미지 뷰)와 쉐이더를 연결하는데 필요한 변수
+
+    // Descriptor               : 디스크립터 세트 개체로 구성되어있다
+    //                          : 셰이더와 통신하기 위한 프로토콜을 정의하며, 위치 바인딩을 사용해 리소스 메모리를 셰이더와 연결하는 자동 메커니즘 제공
+    //                          : 즉, App과 쉐이더 프로그램의 데이터 통신을 위한 객체
+    // Descriptor Set           : 쉐이더와 리소스를 연결
+    //                          : Descriptor Set Layout을 사용하여, 레이아웃 바인딩으로 들어오는 리소스 데이터를 읽고 해석하는 것을 돕는다
+    // Descriptor Set Layout    : 쉐이더가 지정된 위치의 리소스를 읽을 수 있게 하는 인터페이스 제공
+
+    // VkPipelineLayout         : 파이프라인 내에서 디스크립터 세트 레이아웃의 순서를 관리
+    // VkPipelineCache          : PCO. 저장된 파이프라인을 빠르게 검색하고 재사용하기 위한 매커니즘 제공 (중복 파이프라인 생성을 피할 수 있음)
+    // VkPipeline               : blend, depth/stencil test, primitive assembly, viewport 등의 하드웨어 설정 제어 기능 제공
+
+    // GPU instancing           : 같은 메쉬를 여러곳에 그릴 때(예를들어 나무를),
+    //                          : 같은 draw call을 여러번 하지 않고 인스턴싱하면 오버헤드를 줄일 수 있음
+
+    // vertexInputBindingDescription    : vertex 입력 비율 저장 (inputRate, stride)
+    //                                  : inputRate : vertex index의 addressing 모드를 결정 (instance는 GPU instancing 할 때 쓰임)
+    // vertexInputAttributeDescription  : 데이터 해석에 도움을 주는 메타 데이터 저장
+    //                                  : location, offset, format 등
+
     memset( &gfxPipeline, 0, sizeof( gfxPipeline ) );
 
     VkDescriptorSetLayoutBinding descriptorSetLayoutBinding;
@@ -853,7 +888,6 @@ void CreateGraphicsPipeline( void )
     pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
     pipelineCreateInfo.basePipelineIndex = 0;
 
-
     CALL_VK( vkCreateGraphicsPipelines( device.device_, gfxPipeline.cache_, 1, &pipelineCreateInfo, nullptr, &gfxPipeline.pipeline_ ) );
 
     vkDestroyShaderModule( device.device_, vertexShader, nullptr );
@@ -908,81 +942,34 @@ VkResult CreateDescriptorSet( void )
     return VK_SUCCESS;
 }
 
-bool VulkanDrawFrame( void )
+void CreateCommand()
 {
-    uint32_t nextIndex;
-    // Get the framebuffer index we should draw in
-    CALL_VK( vkAcquireNextImageKHR( device.device_, swapchain.swapchain_, UINT64_MAX, render.semaphore_, VK_NULL_HANDLE, &nextIndex ) );
-    CALL_VK( vkResetFences( device.device_, 1, &render.fence_ ) );
+    // https://vulkan.lunarg.com/doc/view/1.0.37.0/linux/vkspec.chunked/ch07.html
+    // CommandPool      : queue property를 위해 queueFamilyIndex를 가지고 초기화
+    // CommandBuffer    : primary command buffer    : 실행을 위해 큐로 보내지는 명령들의 집합
+    //                  : secondary command buffer  : 직접 큐로 보내지지 않고, primary command buffer에 의해 실행됨
+    //                                              : vkCmdExecuteCommands(primary_command_buffer, secondary_command_buffer_count, secondary_command_buffers);
+    //                                              : frame마다 변하지 않는 command들을 레코딩하기에 유용하다. & 사이즈가 큰 primary command buffer를 줄일 수 있다.
 
-    VkPipelineStageFlags waitStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    VkSubmitInfo submit_info;
-    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submit_info.pNext = nullptr;
-    submit_info.waitSemaphoreCount = 1;
-    submit_info.pWaitSemaphores = &render.semaphore_;
-    submit_info.pWaitDstStageMask = &waitStageMask;
-    submit_info.commandBufferCount = 1;
-    submit_info.pCommandBuffers = &render.cmdBuffer_[nextIndex];
-    submit_info.signalSemaphoreCount = 0;
-    submit_info.pSignalSemaphores = nullptr;
-    CALL_VK( vkQueueSubmit( device.queue_, 1, &submit_info, render.fence_ ) );
-    CALL_VK( vkWaitForFences( device.device_, 1, &render.fence_, VK_TRUE, 100000000 ) );
+    // Command Recording
+    //                  : beginCommandBuffer    : 커맨드 버퍼 레코딩 시작
+    //                  : setImageLayout        :
+    //                  : beginRenderPass       : 렌더패스 인스턴스를 만들고, 렌드패스 인스턴스 레코딩을 시작
+    //                  : bindPipeline          : 파이프라인 바인딩
+    //                  : bindVertexBuffers     : 파이프라인에서 사용하는 리소스 바인딩
+    //                  : draw                  : 드로우 동작을 정의한다. (실제 드로잉 되는게 아님)
+    //                  : endRenderPass         : 렌더패스 인스턴스 레코딩종료 (커맨드가 execute될때 렌더패스 인스턴스가 실행됨)
+    //                  : endCommandBuffer      : 커맨드 버퍼 레코딩 종료
 
-    LOGI( "Drawing frames......" );
+    // vkCmdNextSubpass : To transition to the next subpass in the render pass instance after recording the commands for a subpass
+    //                  : The subpass index for a render pass begins at zero when vkCmdBeginRenderPass is recorded, and increments each time vkCmdNextSubpass is recorded.
 
-    VkResult result;
-    VkPresentInfoKHR presentInfo;
-    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-    presentInfo.pNext = nullptr;
-    presentInfo.swapchainCount = 1;
-    presentInfo.pSwapchains = &swapchain.swapchain_;
-    presentInfo.pImageIndices = &nextIndex;
-    presentInfo.waitSemaphoreCount = 0;
-    presentInfo.pWaitSemaphores = nullptr;
-    presentInfo.pResults = &result;
 
-    vkQueuePresentKHR( device.queue_, &presentInfo );
-    return true;
-}
-
-bool InitVulkan( android_app* app )
-{
-    androidAppCtx = app;
-
-    if( !InitVulkan() )
-    {
-        LOGW( "Vulkan is unavailable, install vulkan and re-start" );
-        return false;
-    }
-
-    VkApplicationInfo appInfo;
-    appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-    appInfo.pNext = nullptr;
-    appInfo.apiVersion = VK_MAKE_VERSION( 1, 0, 0 );
-    appInfo.applicationVersion = VK_MAKE_VERSION( 1, 0, 0 );
-    appInfo.engineVersion = VK_MAKE_VERSION( 1, 0, 0 );
-    appInfo.pApplicationName = "tutorial05_triangle_window";
-    appInfo.pEngineName = "tutorial";
-
-    // create a device
-    CreateVulkanDevice( app->window, &appInfo );
-
-    CreateSwapChain();
-
-    CreateRenderPass();
-
-    CreateFrameBuffers( render.renderPass_ );
-    CreateTexture();
-    CreateBuffers();
-
-    // Create graphics pipeline
-    CreateGraphicsPipeline();
-
-    CreateDescriptorSet();
+    // Rendering commands are recorded into a particular subpass of a render pass instance
 
     // -----------------------------------------------
     // Create a pool of command buffers to allocate command buffer from
+
     VkCommandPoolCreateInfo cmdPoolCreateInfo;
     cmdPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     cmdPoolCreateInfo.pNext = nullptr;
@@ -1068,8 +1055,96 @@ bool InitVulkan( android_app* app )
     semaphoreCreateInfo.flags = 0;
 
     CALL_VK( vkCreateSemaphore( device.device_, &semaphoreCreateInfo, nullptr, &render.semaphore_ ) );
+}
+
+bool VulkanDrawFrame( void )
+{
+    // fence        : device와 host사이의 동기화 객체
+    //              : vkResetFences     : fence가 unsignaled 된다.
+    //              : vkQueueSubmit     : fence가 signaled 된다.
+    //              : vkWaitForFence    : fence가 signaled가 될 때 까지 기다린다.
+    //              : reset함수에 device를 전달하는데, 이 device가 fence를 reset 시키는 논리적 장치이다
+    // semephore    : queue 사이의 동기화 객체
+    //              : submit할때 semaphore전달. 내부적으로 큐들 사이의 동기화해줌, fence와 다르게 해줄게 별로 없음
+
+    //              : fence, semaphore => 시작할때 unsignaled로 하고, 끝나면 signaled로 변경
+    //              : vkAcquireNextImageKHR가 호출될때 세마포어가 unsignaled상태이면 singaled가 될때까지 기다린다? 아니면 미정의 동작?
+
+    uint32_t nextIndex;
+    // Get the framebuffer index we should draw in
+    CALL_VK( vkAcquireNextImageKHR( device.device_, swapchain.swapchain_, UINT64_MAX, render.semaphore_, VK_NULL_HANDLE, &nextIndex ) );
+    CALL_VK( vkResetFences( device.device_, 1, &render.fence_ ) );
+
+    VkPipelineStageFlags waitStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    VkSubmitInfo submit_info;
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit_info.pNext = nullptr;
+    submit_info.waitSemaphoreCount = 1;
+    submit_info.pWaitSemaphores = &render.semaphore_;
+    submit_info.pWaitDstStageMask = &waitStageMask;
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &render.cmdBuffer_[nextIndex];
+    submit_info.signalSemaphoreCount = 0;
+    submit_info.pSignalSemaphores = nullptr;
+    CALL_VK( vkQueueSubmit( device.queue_, 1, &submit_info, render.fence_ ) );
+    CALL_VK( vkWaitForFences( device.device_, 1, &render.fence_, VK_TRUE, 100000000 ) );
+
+    LOGI( "Drawing frames......" );
+
+    VkResult result;
+    VkPresentInfoKHR presentInfo;
+    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    presentInfo.pNext = nullptr;
+    presentInfo.swapchainCount = 1;
+    presentInfo.pSwapchains = &swapchain.swapchain_;
+    presentInfo.pImageIndices = &nextIndex;
+    presentInfo.waitSemaphoreCount = 0;
+    presentInfo.pWaitSemaphores = nullptr;
+    presentInfo.pResults = &result;
+
+    vkQueuePresentKHR( device.queue_, &presentInfo );
+    return true;
+}
+
+bool InitVulkan( android_app* app )
+{
+    androidAppCtx = app;
+
+    if( !InitVulkan() )
+    {
+        LOGW( "Vulkan is unavailable, install vulkan and re-start" );
+        return false;
+    }
+
+    VkApplicationInfo appInfo;
+    appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    appInfo.pNext = nullptr;
+    appInfo.apiVersion = VK_MAKE_VERSION( 1, 0, 0 );
+    appInfo.applicationVersion = VK_MAKE_VERSION( 1, 0, 0 );
+    appInfo.engineVersion = VK_MAKE_VERSION( 1, 0, 0 );
+    appInfo.pApplicationName = "tutorial05_triangle_window";
+    appInfo.pEngineName = "tutorial";
+
+    CreateVulkanDevice( app->window, &appInfo );
+
+    CreateSwapChain();
+
+    CreateRenderPass();
+
+    CreateFrameBuffers();
+
+    CreateTexture();
+
+    CreateBuffers();
+
+    CreateGraphicsPipeline();
+
+    CreateDescriptorSet();
+
+    CreateCommand();
 
     device.initialized_ = true;
+
     return true;
 }
 
@@ -1122,70 +1197,100 @@ void DeleteVulkan()
     device.initialized_ = false;
 }
 
-void setImageLayout( VkCommandBuffer cmdBuffer, VkImage image, VkImageLayout oldImageLayout, VkImageLayout newImageLayout, VkPipelineStageFlags srcStages, VkPipelineStageFlags destStages )
+// oldImageLayout에서 newImageLayout으로의 전환이 srcStages와 destStages 사이에 일어나야 한다.
+// => srcStages가 모두 끝나고, destStages가 시작되기 전에 전환이 완료되어야 한다.
+void setImageLayout( VkCommandBuffer cmdBuffer,         // render.cmdBuffer_[i]
+                     VkImage image,                     // swapchain.displayImages_[i]
+                     VkImageLayout oldImageLayout,      // VK_IMAGE_LAYOUT_UNDEFINED
+                     VkImageLayout newImageLayout,      // VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+                     VkPipelineStageFlags srcStages,    // VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT
+                     VkPipelineStageFlags destStages    // VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+)
 {
+    // https://vulkan.lunarg.com/doc/view/1.0.26.0/linux/vkspec.chunked/ch06s05.html
+    // https://gpuopen.com/vulkan-barriers-explained/
+    // http://cpp-rendering.io/barriers-vulkan-not-difficult/
+
+    // image layout                     : GPU의 이미지 접근방식
+    //                                  : 주어진 용도 특성에 맞춰 구현에 지정한 방식으로, 메모리 내용을 액세스 할 수 있게 한다.
+    //                                  : 이미지에 사용할 수 있는 일반 레이아웃(VK_IMAGE_LAYOUT_GENERAL)이 있지만, 이 레이아웃 하나만으로는 적절하지 않을 때가 있다.
+
+    // image layout transition
+    // optimal layout <-> linear layout : 최적 레이아웃 <-> 선형 레이아웃 상호 전환(transition) 기능 필요 (host는 최적 레이아웃 메모리 직접 액세스 불가)
+    //                                  : 메모리 장벽을 사용해 레이아웃 전환이 가능하다
+    //                                  : CPU는 이미지 데이터를 선형 레이아웃 버퍼에 저장 후, 최적 레이아웃으로 변경 할 수 있음 (GPU가 더 효율적으로 읽을 수 있도록)
+
+    // memory barrier   : 데이터 읽기와 쓰기를 동기화 (메모리장벽 전후에 지정한 작업이 동기화 되도록 보장)
+    //                  : global memory barrier (VkMemoryBarrier)       : 모든 종류의 실행 메모리 개체에 적용
+    //                  : buffer memory barrier (VkBufferMemoryBarrier) : 지정된 버퍼 개체의 특정 범위에 적용
+    //                  : image memory barrier  (VkImageMemoryBarrier)  : 지정된 이미지 개체의 특정 이미지 하위 리소스 범위를 통해 다른 메모리 엑세스 유형에 적용
+    //                  : vkCmdPipelineBarrier를 통해 메모리 장벽을 삽입한다.
+
+    // srcAccessMask    : 어떤 작업에 대한 완료를 보장할지 정한다
+    // dstAccessMask    : 변경된 layout이 어떤 리소스로 부터 접근 가능할지 정한다.
+
     VkImageMemoryBarrier imageMemoryBarrier;
     imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    imageMemoryBarrier.pNext = NULL;
-    imageMemoryBarrier.srcAccessMask = 0;
-    imageMemoryBarrier.dstAccessMask = 0;
+    imageMemoryBarrier.pNext = nullptr;
     imageMemoryBarrier.oldLayout = oldImageLayout;
     imageMemoryBarrier.newLayout = newImageLayout;
     imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    imageMemoryBarrier.image = image;
-
-
-    imageMemoryBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    imageMemoryBarrier.image = image;                                                               // 1. 지정된 이미지 개체의
+    imageMemoryBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;                     // 2. 특정 이미지 하위 리소스 범위를 통해
     imageMemoryBarrier.subresourceRange.baseMipLevel = 0;
     imageMemoryBarrier.subresourceRange.levelCount = 1;
     imageMemoryBarrier.subresourceRange.baseArrayLayer = 0;
     imageMemoryBarrier.subresourceRange.layerCount = 1;
 
-
     switch( oldImageLayout )
     {
-        case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-            imageMemoryBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL: // image의 원래의 접근 용도가 컬러 첨부 였다면
+            imageMemoryBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT; // transition이 일어나기 전에 color에 모든 write가 끝남을 보장해야 한다.
             break;
-
-        case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-            imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL: // 이미지의 원래 접근 용도가 dst_optimal이었다면 (예를들어 copy)
+            imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; // transfer_write가 모두 끝나고 transition이 되어야 함을 보장해야 한다.
             break;
-
-        case VK_IMAGE_LAYOUT_PREINITIALIZED:
-            imageMemoryBarrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+        case VK_IMAGE_LAYOUT_PREINITIALIZED: // 미리 초기화된 레이아웃 이었다면,
+            imageMemoryBarrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT; // 앱쪽에서 이미지에 write한 명령이 끝나고 transition이 되어야 함을 보장해야 한다.
             break;
-
         default:
             break;
     }
 
-    switch( newImageLayout )
+    switch( newImageLayout )                                                                        // 3. 다른 메모리 엑세스 유형에 적용
     {
-        case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-            imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL: // 전환된 이미지의 목적이 transfer_dst_optimal이라면,
+            imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; // tranfer_write 목적으로만 전환된 이미지에 접근 가능하다
             break;
-
-        case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
-            imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL: // 전환된 이미지의 목적이 transfer_src_optimal이라면,
+            imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT; // transfer_read 목적으로만 전환된 이미지에 접근 가능하다
             break;
-
-        case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-            imageMemoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL: // 쉐이더에서 읽으려는 목적이라면
+            imageMemoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT; // 쉐이더에서 읽을때만 접근 가능
             break;
-
-        case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-            imageMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL: // 컬러 첨부가 목적이라면
+            imageMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT; // 컬러 첨부 write 할때만 이미지에 접근 가능
             break;
-
         case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
             imageMemoryBarrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
             break;
-
+        case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR: // present하는게 전환된 이미지의 목적이라면
+            imageMemoryBarrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT; // memory_read를 위해서만 이미지에 접근이 가능하다
+            break;
         default:
             break;
     }
 
-    vkCmdPipelineBarrier( cmdBuffer, srcStages, destStages, 0, 0, NULL, 0, NULL, 1, &imageMemoryBarrier );
+    vkCmdPipelineBarrier( cmdBuffer,          // 메모리 장벽이 정의된 커맨드 버퍼
+                          srcStages,          // 장벽 구현 전에 수행이 완료돼야 하는 파이프라인 스테이지
+                          destStages,         // 장벽 이전의 명령이 모두 수행되기 전까지는 시작하면 안되는 파이프라인 스테이
+                          0,                  // 스크린 공간 지역성(locality)가 있는지 알려준다.
+                          0,                  // global memory barrier count
+                          nullptr,            // global memory barriers
+                          0,                  // buffer memory barrier count
+                          nullptr,            // buffer memory barriers
+                          1,                  // image memory barrier count
+                          &imageMemoryBarrier // image memory barriers
+    );
 }
