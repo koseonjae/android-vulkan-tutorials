@@ -511,43 +511,42 @@ VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* textur
 
     textureObject->imageLayout_ = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-    VkCommandPoolCreateInfo cmdPoolCreateInfo;
-    cmdPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    cmdPoolCreateInfo.pNext = nullptr;
-    cmdPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    cmdPoolCreateInfo.queueFamilyIndex = device.queueFamilyIndex_;
+    VkCommandPool commandPool;
+    VkCommandPoolCreateInfo commandPoolCreateInfo;
+    commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    commandPoolCreateInfo.pNext = nullptr;
+    commandPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    commandPoolCreateInfo.queueFamilyIndex = device.queueFamilyIndex_;
+    CALL_VK( vkCreateCommandPool( device.device_, &commandPoolCreateInfo, nullptr, &commandPool ) );
 
-    VkCommandPool cmdPool;
-    CALL_VK( vkCreateCommandPool( device.device_, &cmdPoolCreateInfo, nullptr, &cmdPool ) );
-
-    VkCommandBuffer gfxCmd;
+    VkCommandBuffer commandBuffer;
     VkCommandBufferAllocateInfo cmd;
     cmd.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     cmd.pNext = nullptr;
-    cmd.commandPool = cmdPool;
+    cmd.commandPool = commandPool;
     cmd.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     cmd.commandBufferCount = 1;
+    CALL_VK( vkAllocateCommandBuffers( device.device_, &cmd, &commandBuffer ) );
 
-    CALL_VK( vkAllocateCommandBuffers( device.device_, &cmd, &gfxCmd ) );
-    VkCommandBufferBeginInfo cmd_buf_info;
-    cmd_buf_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cmd_buf_info.pNext = nullptr;
-    cmd_buf_info.flags = 0;
-    cmd_buf_info.pInheritanceInfo = nullptr;
-    CALL_VK( vkBeginCommandBuffer( gfxCmd, &cmd_buf_info ) );
+    VkCommandBufferBeginInfo commandBufferBeginInfo;
+    commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    commandBufferBeginInfo.pNext = nullptr;
+    commandBufferBeginInfo.flags = 0;
+    commandBufferBeginInfo.pInheritanceInfo = nullptr;
+    CALL_VK( vkBeginCommandBuffer( commandBuffer, &commandBufferBeginInfo ) );
 
     // If linear is supported, we are done
     VkImage stageImage = VK_NULL_HANDLE;
-    VkDeviceMemory stageMem = VK_NULL_HANDLE;
+    VkDeviceMemory stageMemory = VK_NULL_HANDLE;
     if( !needBlit )
     {
-        setImageLayout( gfxCmd, textureObject->image_, VK_IMAGE_LAYOUT_PREINITIALIZED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT );
+        setImageLayout( commandBuffer, textureObject->image_, VK_IMAGE_LAYOUT_PREINITIALIZED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT );
     }
     else
     {
         // save current image and mem as staging image and memory
         stageImage = textureObject->image_;
-        stageMem = textureObject->deviceMemory_;
+        stageMemory = textureObject->deviceMemory_;
         textureObject->image_ = VK_NULL_HANDLE;
         textureObject->deviceMemory_ = VK_NULL_HANDLE;
 
@@ -564,24 +563,23 @@ VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* textur
         CALL_VK( vkBindImageMemory( device.device_, textureObject->image_, textureObject->deviceMemory_, 0 ) );
 
         // transitions image out of UNDEFINED type
-        setImageLayout( gfxCmd, stageImage, VK_IMAGE_LAYOUT_PREINITIALIZED, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT );
-        setImageLayout( gfxCmd, textureObject->image_, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT );
+        setImageLayout( commandBuffer, stageImage, VK_IMAGE_LAYOUT_PREINITIALIZED, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT );
+        setImageLayout( commandBuffer, textureObject->image_, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT );
         VkImageCopy bltInfo;
         bltInfo.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, bltInfo.srcSubresource.mipLevel = 0, bltInfo.srcSubresource.baseArrayLayer = 0, bltInfo.srcSubresource.layerCount = 1, bltInfo.srcOffset.x = 0, bltInfo.srcOffset.y = 0, bltInfo.srcOffset.z = 0, bltInfo.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, bltInfo.dstSubresource.mipLevel = 0, bltInfo.dstSubresource.baseArrayLayer = 0, bltInfo.dstSubresource.layerCount = 1, bltInfo.dstOffset.x = 0, bltInfo.dstOffset.y = 0, bltInfo.dstOffset.z = 0, bltInfo.extent.width = imgWidth, bltInfo.extent.height = imgHeight, bltInfo.extent.depth = 1,
 
-                vkCmdCopyImage( gfxCmd, stageImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, textureObject->image_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &bltInfo );
+                vkCmdCopyImage( commandBuffer, stageImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, textureObject->image_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &bltInfo );
 
-        setImageLayout( gfxCmd, textureObject->image_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT );
+        setImageLayout( commandBuffer, textureObject->image_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT );
     }
 
-    CALL_VK( vkEndCommandBuffer( gfxCmd ) );
+    CALL_VK( vkEndCommandBuffer( commandBuffer ) );
 
+    VkFence fence;
     VkFenceCreateInfo fenceInfo;
     fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     fenceInfo.pNext = nullptr;
     fenceInfo.flags = 0;
-
-    VkFence fence;
     CALL_VK( vkCreateFence( device.device_, &fenceInfo, nullptr, &fence ) );
 
     VkSubmitInfo submitInfo;
@@ -591,20 +589,19 @@ VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* textur
     submitInfo.pWaitSemaphores = nullptr;
     submitInfo.pWaitDstStageMask = nullptr;
     submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &gfxCmd;
+    submitInfo.pCommandBuffers = &commandBuffer;
     submitInfo.signalSemaphoreCount = 0;
     submitInfo.pSignalSemaphores = nullptr;
     CALL_VK( vkQueueSubmit( device.queue_, 1, &submitInfo, fence ) != VK_SUCCESS );
-
     CALL_VK( vkWaitForFences( device.device_, 1, &fence, VK_TRUE, 100000000 ) != VK_SUCCESS );
 
     vkDestroyFence( device.device_, fence, nullptr );
-    vkFreeCommandBuffers( device.device_, cmdPool, 1, &gfxCmd );
-    vkDestroyCommandPool( device.device_, cmdPool, nullptr );
+    vkFreeCommandBuffers( device.device_, commandPool, 1, &commandBuffer );
+    vkDestroyCommandPool( device.device_, commandPool, nullptr );
     if( stageImage != VK_NULL_HANDLE )
     {
         vkDestroyImage( device.device_, stageImage, nullptr );
-        vkFreeMemory( device.device_, stageMem, nullptr );
+        vkFreeMemory( device.device_, stageMemory, nullptr );
     }
     return VK_SUCCESS;
 }
