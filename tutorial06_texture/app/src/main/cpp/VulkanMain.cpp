@@ -384,15 +384,23 @@ void CreateFrameBuffers( VkImageView depthView = VK_NULL_HANDLE )
 // A help function to map required memory property into a VK memory type
 // memory type is an index into the array of 32 entries; or the bit index
 // for the memory type ( each BIT of an 32 bit integer is a type ).
-VkResult findMemoryType( uint32_t typeBits, VkFlags requirements_mask, uint32_t* typeIndex )
+VkResult findMemoryTypeIndex( uint32_t typeBits, VkFlags requirementsMask, uint32_t* typeIndex )
 {
+    // GPU가 가진 메모리 타입중에, 필요로하는 메모리 특성을 모두 가지고 있는 메모리 타입의 index를 반환한다.
+    // requirementMask                      : 필요한 메모리 특성을 flag로 전달
+
+    // VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT  : 이 타입으로 할당된 메모리는 vkMapMemory를 통해 host가 접근 가능하다.
+    // VK_MEMORY_PROPERTY_HOST_COHERENT_BIT : host와 device가 밀착된 메모리
+    //                                      : 호스트게 메모리에 쓴 글을 flush하지 않아도 device가 바로 읽을 수 있고
+    //                                      : device가 메모리에 쓴 글도 호스트에게 visible함
+
     // Search memtypes to find first index with those properties
     for( uint32_t i = 0; i < 32; i++ )
     {
         if( ( typeBits & 1 ) == 1 )
         {
             // Type is available, does it match user properties?
-            if( ( device.gpuMemoryProperties_.memoryTypes[i].propertyFlags & requirements_mask ) == requirements_mask )
+            if( ( device.gpuMemoryProperties_.memoryTypes[i].propertyFlags & requirementsMask ) == requirementsMask )
             {
                 *typeIndex = i;
                 return VK_SUCCESS;
@@ -404,10 +412,10 @@ VkResult findMemoryType( uint32_t typeBits, VkFlags requirements_mask, uint32_t*
     return VK_ERROR_MEMORY_MAP_FAILED;
 }
 
-VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* tex_obj, VkImageUsageFlags usage, VkFlags required_props )
+VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* textureObject, VkImageUsageFlags usage, VkFlags requiredProps )
 {
     // blit         : bit block trasnfer의 약어, 데이터 배열을 목적지 배열에 복사하는것을 뜻함
-    if( !( usage | required_props ) )
+    if( !( usage | requiredProps ) )
     {
         __android_log_print( ANDROID_LOG_ERROR, "tutorial texture", "No usage and required_pros" );
         return VK_ERROR_FORMAT_NOT_SUPPORTED;
@@ -436,8 +444,8 @@ VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* tex_ob
     unsigned char* imageData = stbi_load_from_memory( fileContent, fileLength, reinterpret_cast<int*>(&imgWidth), reinterpret_cast<int*>(&imgHeight), reinterpret_cast<int*>(&n), 4 );
     assert( n == 4 );
 
-    tex_obj->width_ = imgWidth;
-    tex_obj->height_ = imgHeight;
+    textureObject->width_ = imgWidth;
+    textureObject->height_ = imgHeight;
 
     // Allocate the linear texture so texture could be copied over
     VkImageCreateInfo image_create_info;
@@ -456,10 +464,10 @@ VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* tex_ob
     image_create_info.pQueueFamilyIndices = &device.queueFamilyIndex_;
     image_create_info.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
     image_create_info.flags = 0;
-    CALL_VK( vkCreateImage( device.device_, &image_create_info, nullptr, &tex_obj->image_ ) );
+    CALL_VK( vkCreateImage( device.device_, &image_create_info, nullptr, &textureObject->image_ ) );
 
     VkMemoryRequirements memoryRequirements;
-    vkGetImageMemoryRequirements( device.device_, tex_obj->image_, &memoryRequirements );
+    vkGetImageMemoryRequirements( device.device_, textureObject->image_, &memoryRequirements );
 
     VkMemoryAllocateInfo memoryAllocateInfo;
     memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -467,11 +475,11 @@ VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* tex_ob
     memoryAllocateInfo.allocationSize = 0;
     memoryAllocateInfo.memoryTypeIndex = 0;
     memoryAllocateInfo.allocationSize = memoryRequirements.size;
-    VK_CHECK( findMemoryType( memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, &memoryAllocateInfo.memoryTypeIndex ) );
-    CALL_VK( vkAllocateMemory( device.device_, &memoryAllocateInfo, nullptr, &tex_obj->deviceMemory_ ) );
-    CALL_VK( vkBindImageMemory( device.device_, tex_obj->image_, tex_obj->deviceMemory_, 0 ) );
+    VK_CHECK( findMemoryTypeIndex( memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, &memoryAllocateInfo.memoryTypeIndex ) );
+    CALL_VK( vkAllocateMemory( device.device_, &memoryAllocateInfo, nullptr, &textureObject->deviceMemory_ ) );
+    CALL_VK( vkBindImageMemory( device.device_, textureObject->image_, textureObject->deviceMemory_, 0 ) );
 
-    if( required_props & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT )
+    if( requiredProps & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT )
     {
         VkImageSubresource imageSubresource;
         imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -479,10 +487,10 @@ VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* tex_ob
         imageSubresource.arrayLayer = 0;
 
         VkSubresourceLayout subresourceLayout;
-        vkGetImageSubresourceLayout( device.device_, tex_obj->image_, &imageSubresource, &subresourceLayout );
+        vkGetImageSubresourceLayout( device.device_, textureObject->image_, &imageSubresource, &subresourceLayout );
 
         void* data;
-        CALL_VK( vkMapMemory( device.device_, tex_obj->deviceMemory_, 0, memoryAllocateInfo.allocationSize, 0, &data ) );
+        CALL_VK( vkMapMemory( device.device_, textureObject->deviceMemory_, 0, memoryAllocateInfo.allocationSize, 0, &data ) );
 
         for( int32_t y = 0; y < imgHeight; y++ )
         {
@@ -496,12 +504,12 @@ VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* tex_ob
             }
         }
 
-        vkUnmapMemory( device.device_, tex_obj->deviceMemory_ );
+        vkUnmapMemory( device.device_, textureObject->deviceMemory_ );
         stbi_image_free( imageData );
     }
     delete[] fileContent;
 
-    tex_obj->imageLayout_ = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    textureObject->imageLayout_ = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
     VkCommandPoolCreateInfo cmdPoolCreateInfo;
     cmdPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -533,37 +541,37 @@ VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* tex_ob
     VkDeviceMemory stageMem = VK_NULL_HANDLE;
     if( !needBlit )
     {
-        setImageLayout( gfxCmd, tex_obj->image_, VK_IMAGE_LAYOUT_PREINITIALIZED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT );
+        setImageLayout( gfxCmd, textureObject->image_, VK_IMAGE_LAYOUT_PREINITIALIZED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT );
     }
     else
     {
         // save current image and mem as staging image and memory
-        stageImage = tex_obj->image_;
-        stageMem = tex_obj->deviceMemory_;
-        tex_obj->image_ = VK_NULL_HANDLE;
-        tex_obj->deviceMemory_ = VK_NULL_HANDLE;
+        stageImage = textureObject->image_;
+        stageMem = textureObject->deviceMemory_;
+        textureObject->image_ = VK_NULL_HANDLE;
+        textureObject->deviceMemory_ = VK_NULL_HANDLE;
 
         // Create a tile texture to blit into
         image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
         image_create_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
         image_create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        CALL_VK( vkCreateImage( device.device_, &image_create_info, nullptr, &tex_obj->image_ ) );
-        vkGetImageMemoryRequirements( device.device_, tex_obj->image_, &memoryRequirements );
+        CALL_VK( vkCreateImage( device.device_, &image_create_info, nullptr, &textureObject->image_ ) );
+        vkGetImageMemoryRequirements( device.device_, textureObject->image_, &memoryRequirements );
 
         memoryAllocateInfo.allocationSize = memoryRequirements.size;
-        VK_CHECK( findMemoryType( memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &memoryAllocateInfo.memoryTypeIndex ) );
-        CALL_VK( vkAllocateMemory( device.device_, &memoryAllocateInfo, nullptr, &tex_obj->deviceMemory_ ) );
-        CALL_VK( vkBindImageMemory( device.device_, tex_obj->image_, tex_obj->deviceMemory_, 0 ) );
+        VK_CHECK( findMemoryTypeIndex( memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &memoryAllocateInfo.memoryTypeIndex ) );
+        CALL_VK( vkAllocateMemory( device.device_, &memoryAllocateInfo, nullptr, &textureObject->deviceMemory_ ) );
+        CALL_VK( vkBindImageMemory( device.device_, textureObject->image_, textureObject->deviceMemory_, 0 ) );
 
         // transitions image out of UNDEFINED type
         setImageLayout( gfxCmd, stageImage, VK_IMAGE_LAYOUT_PREINITIALIZED, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT );
-        setImageLayout( gfxCmd, tex_obj->image_, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT );
+        setImageLayout( gfxCmd, textureObject->image_, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT );
         VkImageCopy bltInfo;
         bltInfo.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, bltInfo.srcSubresource.mipLevel = 0, bltInfo.srcSubresource.baseArrayLayer = 0, bltInfo.srcSubresource.layerCount = 1, bltInfo.srcOffset.x = 0, bltInfo.srcOffset.y = 0, bltInfo.srcOffset.z = 0, bltInfo.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, bltInfo.dstSubresource.mipLevel = 0, bltInfo.dstSubresource.baseArrayLayer = 0, bltInfo.dstSubresource.layerCount = 1, bltInfo.dstOffset.x = 0, bltInfo.dstOffset.y = 0, bltInfo.dstOffset.z = 0, bltInfo.extent.width = imgWidth, bltInfo.extent.height = imgHeight, bltInfo.extent.depth = 1,
 
-                vkCmdCopyImage( gfxCmd, stageImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, tex_obj->image_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &bltInfo );
+                vkCmdCopyImage( gfxCmd, stageImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, textureObject->image_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &bltInfo );
 
-        setImageLayout( gfxCmd, tex_obj->image_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT );
+        setImageLayout( gfxCmd, textureObject->image_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT );
     }
 
     CALL_VK( vkEndCommandBuffer( gfxCmd ) );
@@ -640,6 +648,8 @@ bool CreateBuffers( void )
     // VkDeviceMemory       : MemoryRequirements와 allocationInfo를 통해 device memory 객체를 생성한다.
     //                      : cpu voide pointer와 mapping하여 cpu에서 VkBuffer 메모리 write 할 수 있게 한다.
 
+    // todo: staging buffer를 이용한 최적화
+
     const float vertexData[] = { -1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f, -1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.5f, 1.0f, };
 
     VkBufferCreateInfo createBufferInfo;
@@ -663,7 +673,7 @@ bool CreateBuffers( void )
     allocInfo.allocationSize = memReq.size;
     allocInfo.memoryTypeIndex = 0;
 
-    VK_CHECK( findMemoryType( memReq.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &allocInfo.memoryTypeIndex ) );
+    VK_CHECK( findMemoryTypeIndex( memReq.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &allocInfo.memoryTypeIndex ) );
 
     VkDeviceMemory deviceMemory;
     CALL_VK( vkAllocateMemory( device.device_, &allocInfo, nullptr, &deviceMemory ) );
@@ -1037,7 +1047,7 @@ bool VulkanDrawFrame( void )
 {
     // fence        : device와 host사이의 동기화 객체
     //              : vkResetFences     : fence가 unsignaled 된다.
-    //              : vkQueueSubmit     : fence가 signaled 된다.
+    //              : vkQueueSubmit     : fence가 signaled 된다. todo: 언제?
     //              : vkWaitForFence    : fence가 signaled가 될 때 까지 기다린다.
     //              : reset함수에 device를 전달하는데, 이 device가 fence를 reset 시키는 논리적 장치이다
     // semephore    : queue 사이의 동기화 객체
