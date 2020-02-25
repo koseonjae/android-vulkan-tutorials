@@ -448,23 +448,23 @@ VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* textur
     textureObject->height_ = imgHeight;
 
     // Allocate the linear texture so texture could be copied over
-    VkImageCreateInfo image_create_info;
-    image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    image_create_info.pNext = nullptr;
-    image_create_info.imageType = VK_IMAGE_TYPE_2D;
-    image_create_info.format = kTexFmt;
-    image_create_info.extent = { static_cast<uint32_t>(imgWidth), static_cast<uint32_t>(imgHeight), 1 };
-    image_create_info.mipLevels = 1;
-    image_create_info.arrayLayers = 1;
-    image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
-    image_create_info.tiling = VK_IMAGE_TILING_LINEAR;
-    image_create_info.usage = ( needBlit ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : VK_IMAGE_USAGE_SAMPLED_BIT );
-    image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    image_create_info.queueFamilyIndexCount = 1;
-    image_create_info.pQueueFamilyIndices = &device.queueFamilyIndex_;
-    image_create_info.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
-    image_create_info.flags = 0;
-    CALL_VK( vkCreateImage( device.device_, &image_create_info, nullptr, &textureObject->image_ ) );
+    VkImageCreateInfo imageCreateInfo;
+    imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    imageCreateInfo.pNext = nullptr;
+    imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
+    imageCreateInfo.format = kTexFmt;
+    imageCreateInfo.extent = { static_cast<uint32_t>(imgWidth), static_cast<uint32_t>(imgHeight), 1 };
+    imageCreateInfo.mipLevels = 1;
+    imageCreateInfo.arrayLayers = 1;
+    imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    imageCreateInfo.tiling = VK_IMAGE_TILING_LINEAR;
+    imageCreateInfo.usage = ( needBlit ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : VK_IMAGE_USAGE_SAMPLED_BIT );
+    imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    imageCreateInfo.queueFamilyIndexCount = 1;
+    imageCreateInfo.pQueueFamilyIndices = &device.queueFamilyIndex_;
+    imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
+    imageCreateInfo.flags = 0;
+    CALL_VK( vkCreateImage( device.device_, &imageCreateInfo, nullptr, &textureObject->image_ ) );
 
     VkMemoryRequirements memoryRequirements;
     vkGetImageMemoryRequirements( device.device_, textureObject->image_, &memoryRequirements );
@@ -552,10 +552,10 @@ VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* textur
         textureObject->deviceMemory_ = VK_NULL_HANDLE;
 
         // Create a tile texture to blit into
-        image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
-        image_create_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-        image_create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        CALL_VK( vkCreateImage( device.device_, &image_create_info, nullptr, &textureObject->image_ ) );
+        imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        imageCreateInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        CALL_VK( vkCreateImage( device.device_, &imageCreateInfo, nullptr, &textureObject->image_ ) );
         vkGetImageMemoryRequirements( device.device_, textureObject->image_, &memoryRequirements );
 
         memoryAllocateInfo.allocationSize = memoryRequirements.size;
@@ -682,13 +682,13 @@ bool CreateBuffers( void )
 
     VkDeviceMemory deviceMemory;
     CALL_VK( vkAllocateMemory( device.device_, &allocInfo, nullptr, &deviceMemory ) );
+    CALL_VK( vkBindBufferMemory( device.device_, buffers.vertexBuf_, deviceMemory, 0 ) );
 
     void* data;
     CALL_VK( vkMapMemory( device.device_, deviceMemory, 0, allocInfo.allocationSize, 0, &data ) );
     memcpy( data, vertexData, sizeof( vertexData ) );
     vkUnmapMemory( device.device_, deviceMemory );
 
-    CALL_VK( vkBindBufferMemory( device.device_, buffers.vertexBuf_, deviceMemory, 0 ) );
     return true;
 }
 
