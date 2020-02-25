@@ -638,15 +638,13 @@ bool MapMemoryTypeToIndex( uint32_t typeBits, VkFlags requirements_mask, uint32_
     //                                      : 호스트게 메모리에 쓴 글을 flush하지 않아도 device가 바로 읽을 수 있고
     //                                      : device가 메모리에 쓴 글도 호스트에게 visible함
 
-    VkPhysicalDeviceMemoryProperties memoryProperties;
-    vkGetPhysicalDeviceMemoryProperties( device.physicalDevice_, &memoryProperties );
     // Search memtypes to find first index with those properties
     for( uint32_t i = 0; i < 32; i++ )
     {
         if( ( typeBits & 1 ) == 1 )
         {
             // Type is available, does it match user properties?
-            if( ( memoryProperties.memoryTypes[i].propertyFlags & requirements_mask ) == requirements_mask )
+            if( ( device.gpuMemoryProperties_.memoryTypes[i].propertyFlags & requirements_mask ) == requirements_mask )
             {
                 *typeIndex = i;
                 return true;
