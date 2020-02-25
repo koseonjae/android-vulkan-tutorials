@@ -592,6 +592,7 @@ VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* textur
     submitInfo.pCommandBuffers = &commandBuffer;
     submitInfo.signalSemaphoreCount = 0;
     submitInfo.pSignalSemaphores = nullptr;
+    CALL_VK( vkResetFences( device.device_, 1, &fence ) );
     CALL_VK( vkQueueSubmit( device.queue_, 1, &submitInfo, fence ) != VK_SUCCESS );
     CALL_VK( vkWaitForFences( device.device_, 1, &fence, VK_TRUE, 100000000 ) != VK_SUCCESS );
 
