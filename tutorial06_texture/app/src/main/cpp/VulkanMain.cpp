@@ -72,20 +72,20 @@ struct VulkanSwapchainInfo
 };
 VulkanSwapchainInfo swapchain;
 
-typedef struct texture_object
+struct TextureObject
 {
-    VkSampler sampler;
-    VkImage image;
-    VkImageLayout imageLayout;
-    VkDeviceMemory mem;
-    VkImageView view;
-    int32_t tex_width;
-    int32_t tex_height;
-} texture_object;
+    VkSampler sampler_;
+    VkImage image_;
+    VkImageLayout imageLayout_;
+    VkDeviceMemory deviceMemory_;
+    VkImageView imageView_;
+    int32_t width_;
+    int32_t height_;
+};
 static const VkFormat kTexFmt = VK_FORMAT_R8G8B8A8_UNORM;
 #define TUTORIAL_TEXTURE_COUNT 1
 const char* texFiles[TUTORIAL_TEXTURE_COUNT] = { "sample_tex.png", };
-struct texture_object textures[TUTORIAL_TEXTURE_COUNT];
+struct TextureObject textures[TUTORIAL_TEXTURE_COUNT];
 
 struct VulkanBufferInfo
 {
@@ -404,8 +404,9 @@ VkResult AllocateMemoryTypeFromProperties( uint32_t typeBits, VkFlags requiremen
     return VK_ERROR_MEMORY_MAP_FAILED;
 }
 
-VkResult LoadTextureFromFile( const char* filePath, struct texture_object* tex_obj, VkImageUsageFlags usage, VkFlags required_props )
+VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* tex_obj, VkImageUsageFlags usage, VkFlags required_props )
 {
+    // blit         : bit block trasnfer의 약어, 데이터 배열을 목적지 배열에 복사하는것을 뜻함
     if( !( usage | required_props ) )
     {
         __android_log_print( ANDROID_LOG_ERROR, "tutorial texture", "No usage and required_pros" );
@@ -435,8 +436,8 @@ VkResult LoadTextureFromFile( const char* filePath, struct texture_object* tex_o
     unsigned char* imageData = stbi_load_from_memory( fileContent, fileLength, reinterpret_cast<int*>(&imgWidth), reinterpret_cast<int*>(&imgHeight), reinterpret_cast<int*>(&n), 4 );
     assert( n == 4 );
 
-    tex_obj->tex_width = imgWidth;
-    tex_obj->tex_height = imgHeight;
+    tex_obj->width_ = imgWidth;
+    tex_obj->height_ = imgHeight;
 
     // Allocate the linear texture so texture could be copied over
     VkImageCreateInfo image_create_info;
@@ -455,33 +456,37 @@ VkResult LoadTextureFromFile( const char* filePath, struct texture_object* tex_o
     image_create_info.pQueueFamilyIndices = &device.queueFamilyIndex_;
     image_create_info.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
     image_create_info.flags = 0;
+    CALL_VK( vkCreateImage( device.device_, &image_create_info, nullptr, &tex_obj->image_ ) );
 
-    VkMemoryAllocateInfo mem_alloc;
-    mem_alloc.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    mem_alloc.pNext = nullptr;
-    mem_alloc.allocationSize = 0;
-    mem_alloc.memoryTypeIndex = 0;
+    VkMemoryRequirements memoryRequirements;
+    vkGetImageMemoryRequirements( device.device_, tex_obj->image_, &memoryRequirements );
 
-    VkMemoryRequirements mem_reqs;
-    CALL_VK( vkCreateImage( device.device_, &image_create_info, nullptr, &tex_obj->image ) );
-    vkGetImageMemoryRequirements( device.device_, tex_obj->image, &mem_reqs );
-    mem_alloc.allocationSize = mem_reqs.size;
-    VK_CHECK( AllocateMemoryTypeFromProperties( mem_reqs.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, &mem_alloc.memoryTypeIndex ) );
-    CALL_VK( vkAllocateMemory( device.device_, &mem_alloc, nullptr, &tex_obj->mem ) );
-    CALL_VK( vkBindImageMemory( device.device_, tex_obj->image, tex_obj->mem, 0 ) );
+    VkMemoryAllocateInfo memoryAllocateInfo;
+    memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    memoryAllocateInfo.pNext = nullptr;
+    memoryAllocateInfo.allocationSize = 0;
+    memoryAllocateInfo.memoryTypeIndex = 0;
+    memoryAllocateInfo.allocationSize = memoryRequirements.size;
+    VK_CHECK( AllocateMemoryTypeFromProperties( memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, &memoryAllocateInfo.memoryTypeIndex ) );
+    CALL_VK( vkAllocateMemory( device.device_, &memoryAllocateInfo, nullptr, &tex_obj->deviceMemory_ ) );
+    CALL_VK( vkBindImageMemory( device.device_, tex_obj->image_, tex_obj->deviceMemory_, 0 ) );
 
     if( required_props & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT )
     {
-        const VkImageSubresource subres = { .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .mipLevel = 0, .arrayLayer = 0, };
-        VkSubresourceLayout layout;
-        void* data;
+        VkImageSubresource imageSubresource;
+        imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        imageSubresource.mipLevel = 0;
+        imageSubresource.arrayLayer = 0;
 
-        vkGetImageSubresourceLayout( device.device_, tex_obj->image, &subres, &layout );
-        CALL_VK( vkMapMemory( device.device_, tex_obj->mem, 0, mem_alloc.allocationSize, 0, &data ) );
+        VkSubresourceLayout subresourceLayout;
+        vkGetImageSubresourceLayout( device.device_, tex_obj->image_, &imageSubresource, &subresourceLayout );
+
+        void* data;
+        CALL_VK( vkMapMemory( device.device_, tex_obj->deviceMemory_, 0, memoryAllocateInfo.allocationSize, 0, &data ) );
 
         for( int32_t y = 0; y < imgHeight; y++ )
         {
-            unsigned char* row = ( unsigned char* ) ( ( char* ) data + layout.rowPitch * y );
+            unsigned char* row = ( unsigned char* ) ( ( char* ) data + subresourceLayout.rowPitch * y );
             for( int32_t x = 0; x < imgWidth; x++ )
             {
                 row[x * 4] = imageData[( x + y * imgWidth ) * 4];
@@ -491,12 +496,12 @@ VkResult LoadTextureFromFile( const char* filePath, struct texture_object* tex_o
             }
         }
 
-        vkUnmapMemory( device.device_, tex_obj->mem );
+        vkUnmapMemory( device.device_, tex_obj->deviceMemory_ );
         stbi_image_free( imageData );
     }
     delete[] fileContent;
 
-    tex_obj->imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    tex_obj->imageLayout_ = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
     VkCommandPoolCreateInfo cmdPoolCreateInfo;
     cmdPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -528,37 +533,37 @@ VkResult LoadTextureFromFile( const char* filePath, struct texture_object* tex_o
     VkDeviceMemory stageMem = VK_NULL_HANDLE;
     if( !needBlit )
     {
-        setImageLayout( gfxCmd, tex_obj->image, VK_IMAGE_LAYOUT_PREINITIALIZED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT );
+        setImageLayout( gfxCmd, tex_obj->image_, VK_IMAGE_LAYOUT_PREINITIALIZED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT );
     }
     else
     {
         // save current image and mem as staging image and memory
-        stageImage = tex_obj->image;
-        stageMem = tex_obj->mem;
-        tex_obj->image = VK_NULL_HANDLE;
-        tex_obj->mem = VK_NULL_HANDLE;
+        stageImage = tex_obj->image_;
+        stageMem = tex_obj->deviceMemory_;
+        tex_obj->image_ = VK_NULL_HANDLE;
+        tex_obj->deviceMemory_ = VK_NULL_HANDLE;
 
         // Create a tile texture to blit into
         image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
         image_create_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
         image_create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        CALL_VK( vkCreateImage( device.device_, &image_create_info, nullptr, &tex_obj->image ) );
-        vkGetImageMemoryRequirements( device.device_, tex_obj->image, &mem_reqs );
+        CALL_VK( vkCreateImage( device.device_, &image_create_info, nullptr, &tex_obj->image_ ) );
+        vkGetImageMemoryRequirements( device.device_, tex_obj->image_, &memoryRequirements );
 
-        mem_alloc.allocationSize = mem_reqs.size;
-        VK_CHECK( AllocateMemoryTypeFromProperties( mem_reqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &mem_alloc.memoryTypeIndex ) );
-        CALL_VK( vkAllocateMemory( device.device_, &mem_alloc, nullptr, &tex_obj->mem ) );
-        CALL_VK( vkBindImageMemory( device.device_, tex_obj->image, tex_obj->mem, 0 ) );
+        memoryAllocateInfo.allocationSize = memoryRequirements.size;
+        VK_CHECK( AllocateMemoryTypeFromProperties( memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &memoryAllocateInfo.memoryTypeIndex ) );
+        CALL_VK( vkAllocateMemory( device.device_, &memoryAllocateInfo, nullptr, &tex_obj->deviceMemory_ ) );
+        CALL_VK( vkBindImageMemory( device.device_, tex_obj->image_, tex_obj->deviceMemory_, 0 ) );
 
         // transitions image out of UNDEFINED type
         setImageLayout( gfxCmd, stageImage, VK_IMAGE_LAYOUT_PREINITIALIZED, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT );
-        setImageLayout( gfxCmd, tex_obj->image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT );
+        setImageLayout( gfxCmd, tex_obj->image_, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT );
         VkImageCopy bltInfo;
         bltInfo.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, bltInfo.srcSubresource.mipLevel = 0, bltInfo.srcSubresource.baseArrayLayer = 0, bltInfo.srcSubresource.layerCount = 1, bltInfo.srcOffset.x = 0, bltInfo.srcOffset.y = 0, bltInfo.srcOffset.z = 0, bltInfo.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, bltInfo.dstSubresource.mipLevel = 0, bltInfo.dstSubresource.baseArrayLayer = 0, bltInfo.dstSubresource.layerCount = 1, bltInfo.dstOffset.x = 0, bltInfo.dstOffset.y = 0, bltInfo.dstOffset.z = 0, bltInfo.extent.width = imgWidth, bltInfo.extent.height = imgHeight, bltInfo.extent.depth = 1,
 
-                vkCmdCopyImage( gfxCmd, stageImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, tex_obj->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &bltInfo );
+                vkCmdCopyImage( gfxCmd, stageImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, tex_obj->image_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &bltInfo );
 
-        setImageLayout( gfxCmd, tex_obj->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT );
+        setImageLayout( gfxCmd, tex_obj->image_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT );
     }
 
     CALL_VK( vkEndCommandBuffer( gfxCmd ) );
@@ -622,9 +627,9 @@ void CreateTexture( void )
         view.format = kTexFmt;
         view.components = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A, }, view.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }, view.flags = 0;
 
-        CALL_VK( vkCreateSampler( device.device_, &sampler, nullptr, &textures[i].sampler ) );
-        view.image = textures[i].image;
-        CALL_VK( vkCreateImageView( device.device_, &view, nullptr, &textures[i].view ) );
+        CALL_VK( vkCreateSampler( device.device_, &sampler, nullptr, &textures[i].sampler_ ) );
+        view.image = textures[i].image_;
+        CALL_VK( vkCreateImageView( device.device_, &view, nullptr, &textures[i].imageView_ ) );
     }
 }
 
@@ -920,8 +925,8 @@ VkResult CreateDescriptorSet( void )
     memset( texDsts, 0, sizeof( texDsts ) );
     for( int32_t idx = 0; idx < TUTORIAL_TEXTURE_COUNT; idx++ )
     {
-        texDsts[idx].sampler = textures[idx].sampler;
-        texDsts[idx].imageView = textures[idx].view;
+        texDsts[idx].sampler = textures[idx].sampler_;
+        texDsts[idx].imageView = textures[idx].imageView_;
         texDsts[idx].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
     }
 
