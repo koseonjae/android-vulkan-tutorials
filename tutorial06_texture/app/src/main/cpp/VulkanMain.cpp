@@ -119,7 +119,7 @@ android_app* androidAppCtx = nullptr;
 
 void setImageLayout( VkCommandBuffer cmdBuffer, VkImage image, VkImageLayout oldImageLayout, VkImageLayout newImageLayout, VkPipelineStageFlags srcStages, VkPipelineStageFlags destStages );
 
-void CreateVulkanDevice( ANativeWindow* platformWindow, VkApplicationInfo* appInfo )
+void CreateVulkanDevice( ANativeWindow* platformWindow )
 {
     // instance         : vulkan instance. surface와 physical device 생성에 쓰임
     // android surface  : ANativeWindow와 vulkan instance를 통해 surface 생성
@@ -575,7 +575,12 @@ VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* textur
     }
 
     CALL_VK( vkEndCommandBuffer( gfxCmd ) );
-    VkFenceCreateInfo fenceInfo = { .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, .pNext = nullptr, .flags = 0, };
+
+    VkFenceCreateInfo fenceInfo;
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fenceInfo.pNext = nullptr;
+    fenceInfo.flags = 0;
+
     VkFence fence;
     CALL_VK( vkCreateFence( device.device_, &fenceInfo, nullptr, &fence ) );
 
@@ -589,11 +594,11 @@ VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* textur
     submitInfo.pCommandBuffers = &gfxCmd;
     submitInfo.signalSemaphoreCount = 0;
     submitInfo.pSignalSemaphores = nullptr;
-
     CALL_VK( vkQueueSubmit( device.queue_, 1, &submitInfo, fence ) != VK_SUCCESS );
-    CALL_VK( vkWaitForFences( device.device_, 1, &fence, VK_TRUE, 100000000 ) != VK_SUCCESS );
-    vkDestroyFence( device.device_, fence, nullptr );
 
+    CALL_VK( vkWaitForFences( device.device_, 1, &fence, VK_TRUE, 100000000 ) != VK_SUCCESS );
+
+    vkDestroyFence( device.device_, fence, nullptr );
     vkFreeCommandBuffers( device.device_, cmdPool, 1, &gfxCmd );
     vkDestroyCommandPool( device.device_, cmdPool, nullptr );
     if( stageImage != VK_NULL_HANDLE )
@@ -724,8 +729,8 @@ void CreateGraphicsPipeline( void )
     descriptorSetLayoutCreateInfo.pNext = nullptr;
     descriptorSetLayoutCreateInfo.bindingCount = 1;
     descriptorSetLayoutCreateInfo.pBindings = &descriptorSetLayoutBinding;
-
     CALL_VK( vkCreateDescriptorSetLayout( device.device_, &descriptorSetLayoutCreateInfo, nullptr, &gfxPipeline.dscLayout_ ) );
+
     VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo;
     pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipelineLayoutCreateInfo.pNext = nullptr;
@@ -733,11 +738,14 @@ void CreateGraphicsPipeline( void )
     pipelineLayoutCreateInfo.pSetLayouts = &gfxPipeline.dscLayout_;
     pipelineLayoutCreateInfo.pushConstantRangeCount = 0;
     pipelineLayoutCreateInfo.pPushConstantRanges = nullptr;
-
     CALL_VK( vkCreatePipelineLayout( device.device_, &pipelineLayoutCreateInfo, nullptr, &gfxPipeline.layout_ ) );
 
     // No dynamic state in that tutorial
-    VkPipelineDynamicStateCreateInfo dynamicStateInfo{ .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO, .pNext = nullptr, .dynamicStateCount = 0, .pDynamicStates = nullptr };
+    VkPipelineDynamicStateCreateInfo dynamicStateInfo;
+    dynamicStateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamicStateInfo.pNext = nullptr;
+    dynamicStateInfo.dynamicStateCount = 0;
+    dynamicStateInfo.pDynamicStates = nullptr;
 
     VkShaderModule vertexShader, fragmentShader;
     buildShaderFromFile( androidAppCtx, "shaders/tri.vert", VK_SHADER_STAGE_VERTEX_BIT, device.device_, &vertexShader );
@@ -793,7 +801,10 @@ void CreateGraphicsPipeline( void )
     multisampleInfo.alphaToCoverageEnable = VK_FALSE;
     multisampleInfo.alphaToOneEnable = VK_FALSE;
 
-    VkPipelineColorBlendAttachmentState attachmentStates{ .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT, .blendEnable = VK_FALSE, };
+    VkPipelineColorBlendAttachmentState attachmentStates;
+    attachmentStates.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    attachmentStates.blendEnable = VK_FALSE;
+
     VkPipelineColorBlendStateCreateInfo colorBlendInfo;
     colorBlendInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
     colorBlendInfo.pNext = nullptr;
@@ -882,49 +893,49 @@ void CreateGraphicsPipeline( void )
 
 VkResult CreateDescriptorSet( void )
 {
-    VkDescriptorPoolSize type_count;
-    type_count.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    type_count.descriptorCount = TUTORIAL_TEXTURE_COUNT;
+    VkDescriptorPoolSize descriptorPoolSize;
+    descriptorPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    descriptorPoolSize.descriptorCount = TUTORIAL_TEXTURE_COUNT;
 
-    VkDescriptorPoolCreateInfo descriptor_pool;
-    descriptor_pool.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    descriptor_pool.pNext = nullptr;
-    descriptor_pool.maxSets = 1;
-    descriptor_pool.poolSizeCount = 1;
-    descriptor_pool.pPoolSizes = &type_count;
+    VkDescriptorPoolCreateInfo descriptorPoolCreateInfo;
+    descriptorPoolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    descriptorPoolCreateInfo.pNext = nullptr;
+    descriptorPoolCreateInfo.maxSets = 1;
+    descriptorPoolCreateInfo.poolSizeCount = 1;
+    descriptorPoolCreateInfo.pPoolSizes = &descriptorPoolSize;
 
 
-    CALL_VK( vkCreateDescriptorPool( device.device_, &descriptor_pool, nullptr, &gfxPipeline.descPool_ ) );
+    CALL_VK( vkCreateDescriptorPool( device.device_, &descriptorPoolCreateInfo, nullptr, &gfxPipeline.descPool_ ) );
 
-    VkDescriptorSetAllocateInfo alloc_info;
-    alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    alloc_info.pNext = nullptr;
-    alloc_info.descriptorPool = gfxPipeline.descPool_;
-    alloc_info.descriptorSetCount = 1;
-    alloc_info.pSetLayouts = &gfxPipeline.dscLayout_;
-    CALL_VK( vkAllocateDescriptorSets( device.device_, &alloc_info, &gfxPipeline.descSet_ ) );
+    VkDescriptorSetAllocateInfo descriptorSetAllocateInfo;
+    descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    descriptorSetAllocateInfo.pNext = nullptr;
+    descriptorSetAllocateInfo.descriptorPool = gfxPipeline.descPool_;
+    descriptorSetAllocateInfo.descriptorSetCount = 1;
+    descriptorSetAllocateInfo.pSetLayouts = &gfxPipeline.dscLayout_;
+    CALL_VK( vkAllocateDescriptorSets( device.device_, &descriptorSetAllocateInfo, &gfxPipeline.descSet_ ) );
 
-    VkDescriptorImageInfo texDsts[TUTORIAL_TEXTURE_COUNT];
-    memset( texDsts, 0, sizeof( texDsts ) );
+    VkDescriptorImageInfo descriptorImageInfo[TUTORIAL_TEXTURE_COUNT];
+    memset( descriptorImageInfo, 0, sizeof( descriptorImageInfo ) );
     for( int32_t idx = 0; idx < TUTORIAL_TEXTURE_COUNT; idx++ )
     {
-        texDsts[idx].sampler = textures[idx].sampler_;
-        texDsts[idx].imageView = textures[idx].imageView_;
-        texDsts[idx].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+        descriptorImageInfo[idx].sampler = textures[idx].sampler_;
+        descriptorImageInfo[idx].imageView = textures[idx].imageView_;
+        descriptorImageInfo[idx].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
     }
 
-    VkWriteDescriptorSet writeDst;
-    writeDst.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    writeDst.pNext = nullptr;
-    writeDst.dstSet = gfxPipeline.descSet_;
-    writeDst.dstBinding = 0;
-    writeDst.dstArrayElement = 0;
-    writeDst.descriptorCount = TUTORIAL_TEXTURE_COUNT;
-    writeDst.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    writeDst.pImageInfo = texDsts;
-    writeDst.pBufferInfo = nullptr;
-    writeDst.pTexelBufferView = nullptr;
-    vkUpdateDescriptorSets( device.device_, 1, &writeDst, 0, nullptr );
+    VkWriteDescriptorSet writeDescriptorSet;
+    writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writeDescriptorSet.pNext = nullptr;
+    writeDescriptorSet.dstSet = gfxPipeline.descSet_;
+    writeDescriptorSet.dstBinding = 0;
+    writeDescriptorSet.dstArrayElement = 0;
+    writeDescriptorSet.descriptorCount = TUTORIAL_TEXTURE_COUNT;
+    writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    writeDescriptorSet.pImageInfo = descriptorImageInfo;
+    writeDescriptorSet.pBufferInfo = nullptr;
+    writeDescriptorSet.pTexelBufferView = nullptr;
+    vkUpdateDescriptorSets( device.device_, 1, &writeDescriptorSet, 0, nullptr );
     return VK_SUCCESS;
 }
 
@@ -1006,21 +1017,25 @@ void CreateCommand()
         renderPassBeginInfo.pNext = nullptr;
         renderPassBeginInfo.renderPass = render.renderPass_;
         renderPassBeginInfo.framebuffer = swapchain.framebuffers_[bufferIndex];
-        renderPassBeginInfo.renderArea = { .offset =
-                { .x = 0, .y = 0, }, .extent = swapchain.displaySize_ }, renderPassBeginInfo.clearValueCount = 1;
+        renderPassBeginInfo.renderArea.offset = { .x = 0, .y = 0 };
+        renderPassBeginInfo.renderArea.extent = swapchain.displaySize_;
+        renderPassBeginInfo.clearValueCount = 1;
         renderPassBeginInfo.pClearValues = &clearVals;
         vkCmdBeginRenderPass( render.cmdBuffer_[bufferIndex], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE );
-        // Bind what is necessary to the command buffer
+
         vkCmdBindPipeline( render.cmdBuffer_[bufferIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, gfxPipeline.pipeline_ );
+
         vkCmdBindDescriptorSets( render.cmdBuffer_[bufferIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, gfxPipeline.layout_, 0, 1, &gfxPipeline.descSet_, 0, nullptr );
+
         VkDeviceSize offset = 0;
         vkCmdBindVertexBuffers( render.cmdBuffer_[bufferIndex], 0, 1, &buffers.vertexBuf_, &offset );
 
-        // Draw Triangle
         vkCmdDraw( render.cmdBuffer_[bufferIndex], 3, 1, 0, 0 );
 
         vkCmdEndRenderPass( render.cmdBuffer_[bufferIndex] );
+
         setImageLayout( render.cmdBuffer_[bufferIndex], swapchain.displayImages_[bufferIndex], VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT );
+
         CALL_VK( vkEndCommandBuffer( render.cmdBuffer_[bufferIndex] ) );
     }
 
@@ -1030,7 +1045,6 @@ void CreateCommand()
     fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     fenceCreateInfo.pNext = nullptr;
     fenceCreateInfo.flags = 0;
-
     CALL_VK( vkCreateFence( device.device_, &fenceCreateInfo, nullptr, &render.fence_ ) );
 
     // We need to create a semaphore to be able to wait, in the main loop, for our
@@ -1039,7 +1053,6 @@ void CreateCommand()
     semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
     semaphoreCreateInfo.pNext = nullptr;
     semaphoreCreateInfo.flags = 0;
-
     CALL_VK( vkCreateSemaphore( device.device_, &semaphoreCreateInfo, nullptr, &render.semaphore_ ) );
 }
 
@@ -1057,9 +1070,7 @@ bool VulkanDrawFrame( void )
     //              : vkAcquireNextImageKHR가 호출될때 세마포어가 unsignaled상태이면 singaled가 될때까지 기다린다? 아니면 미정의 동작?
 
     uint32_t nextIndex;
-    // Get the framebuffer index we should draw in
     CALL_VK( vkAcquireNextImageKHR( device.device_, swapchain.swapchain_, UINT64_MAX, render.semaphore_, VK_NULL_HANDLE, &nextIndex ) );
-    CALL_VK( vkResetFences( device.device_, 1, &render.fence_ ) );
 
     VkPipelineStageFlags waitStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     VkSubmitInfo submit_info;
@@ -1072,10 +1083,9 @@ bool VulkanDrawFrame( void )
     submit_info.pCommandBuffers = &render.cmdBuffer_[nextIndex];
     submit_info.signalSemaphoreCount = 0;
     submit_info.pSignalSemaphores = nullptr;
+    CALL_VK( vkResetFences( device.device_, 1, &render.fence_ ) );
     CALL_VK( vkQueueSubmit( device.queue_, 1, &submit_info, render.fence_ ) );
     CALL_VK( vkWaitForFences( device.device_, 1, &render.fence_, VK_TRUE, 100000000 ) );
-
-    LOGI( "Drawing frames......" );
 
     VkResult result;
     VkPresentInfoKHR presentInfo;
@@ -1087,8 +1097,8 @@ bool VulkanDrawFrame( void )
     presentInfo.waitSemaphoreCount = 0;
     presentInfo.pWaitSemaphores = nullptr;
     presentInfo.pResults = &result;
-
     vkQueuePresentKHR( device.queue_, &presentInfo );
+
     return true;
 }
 
@@ -1102,16 +1112,7 @@ bool InitVulkan( android_app* app )
         return false;
     }
 
-    VkApplicationInfo appInfo;
-    appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-    appInfo.pNext = nullptr;
-    appInfo.apiVersion = VK_MAKE_VERSION( 1, 0, 0 );
-    appInfo.applicationVersion = VK_MAKE_VERSION( 1, 0, 0 );
-    appInfo.engineVersion = VK_MAKE_VERSION( 1, 0, 0 );
-    appInfo.pApplicationName = "tutorial05_triangle_window";
-    appInfo.pEngineName = "tutorial";
-
-    CreateVulkanDevice( app->window, &appInfo );
+    CreateVulkanDevice( app->window );
 
     CreateSwapChain();
 
