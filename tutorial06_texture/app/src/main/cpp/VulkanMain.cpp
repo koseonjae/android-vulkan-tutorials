@@ -1047,7 +1047,7 @@ bool VulkanDrawFrame( void )
 {
     // fence        : device와 host사이의 동기화 객체
     //              : vkResetFences     : fence가 unsignaled 된다.
-    //              : vkQueueSubmit     : fence가 signaled 된다. todo: 언제?
+    //              : vkQueueSubmit     : submit한 command가 수행을 마치면 fence가 signaled 된다.
     //              : vkWaitForFence    : fence가 signaled가 될 때 까지 기다린다.
     //              : reset함수에 device를 전달하는데, 이 device가 fence를 reset 시키는 논리적 장치이다
     // semephore    : queue 사이의 동기화 객체
