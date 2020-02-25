@@ -384,7 +384,7 @@ void CreateFrameBuffers( VkImageView depthView = VK_NULL_HANDLE )
 // A help function to map required memory property into a VK memory type
 // memory type is an index into the array of 32 entries; or the bit index
 // for the memory type ( each BIT of an 32 bit integer is a type ).
-VkResult AllocateMemoryTypeFromProperties( uint32_t typeBits, VkFlags requirements_mask, uint32_t* typeIndex )
+VkResult findMemoryType( uint32_t typeBits, VkFlags requirements_mask, uint32_t* typeIndex )
 {
     // Search memtypes to find first index with those properties
     for( uint32_t i = 0; i < 32; i++ )
@@ -467,7 +467,7 @@ VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* tex_ob
     memoryAllocateInfo.allocationSize = 0;
     memoryAllocateInfo.memoryTypeIndex = 0;
     memoryAllocateInfo.allocationSize = memoryRequirements.size;
-    VK_CHECK( AllocateMemoryTypeFromProperties( memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, &memoryAllocateInfo.memoryTypeIndex ) );
+    VK_CHECK( findMemoryType( memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, &memoryAllocateInfo.memoryTypeIndex ) );
     CALL_VK( vkAllocateMemory( device.device_, &memoryAllocateInfo, nullptr, &tex_obj->deviceMemory_ ) );
     CALL_VK( vkBindImageMemory( device.device_, tex_obj->image_, tex_obj->deviceMemory_, 0 ) );
 
@@ -551,7 +551,7 @@ VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* tex_ob
         vkGetImageMemoryRequirements( device.device_, tex_obj->image_, &memoryRequirements );
 
         memoryAllocateInfo.allocationSize = memoryRequirements.size;
-        VK_CHECK( AllocateMemoryTypeFromProperties( memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &memoryAllocateInfo.memoryTypeIndex ) );
+        VK_CHECK( findMemoryType( memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &memoryAllocateInfo.memoryTypeIndex ) );
         CALL_VK( vkAllocateMemory( device.device_, &memoryAllocateInfo, nullptr, &tex_obj->deviceMemory_ ) );
         CALL_VK( vkBindImageMemory( device.device_, tex_obj->image_, tex_obj->deviceMemory_, 0 ) );
 
@@ -633,33 +633,6 @@ void CreateTexture( void )
     }
 }
 
-bool MapMemoryTypeToIndex( uint32_t typeBits, VkFlags requirements_mask, uint32_t* typeIndex )
-{
-    // GPU가 가진 메모리 타입중에, 필요로하는 메모리 특성을 모두 가지고 있는 메모리 타입의 index를 반환한다.
-    // requirementMask                      : 필요한 메모리 특성을 flag로 전달
-
-    // VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT  : 이 타입으로 할당된 메모리는 vkMapMemory를 통해 host가 접근 가능하다.
-    // VK_MEMORY_PROPERTY_HOST_COHERENT_BIT : host와 device가 밀착된 메모리
-    //                                      : 호스트게 메모리에 쓴 글을 flush하지 않아도 device가 바로 읽을 수 있고
-    //                                      : device가 메모리에 쓴 글도 호스트에게 visible함
-
-    // Search memtypes to find first index with those properties
-    for( uint32_t i = 0; i < 32; i++ )
-    {
-        if( ( typeBits & 1 ) == 1 )
-        {
-            // Type is available, does it match user properties?
-            if( ( device.gpuMemoryProperties_.memoryTypes[i].propertyFlags & requirements_mask ) == requirements_mask )
-            {
-                *typeIndex = i;
-                return true;
-            }
-        }
-        typeBits >>= 1;
-    }
-    return false;
-}
-
 bool CreateBuffers( void )
 {
     // VkBuffer             : size, usage, sharding mode, 어떤 property를 가진 queue에서 접근할지 등을 정의
@@ -690,7 +663,7 @@ bool CreateBuffers( void )
     allocInfo.allocationSize = memReq.size;
     allocInfo.memoryTypeIndex = 0;
 
-    MapMemoryTypeToIndex( memReq.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &allocInfo.memoryTypeIndex );
+    VK_CHECK( findMemoryType( memReq.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &allocInfo.memoryTypeIndex ) );
 
     VkDeviceMemory deviceMemory;
     CALL_VK( vkAllocateMemory( device.device_, &allocInfo, nullptr, &deviceMemory ) );
