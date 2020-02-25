@@ -565,11 +565,26 @@ VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* textur
         // transitions image out of UNDEFINED type
         setImageLayout( commandBuffer, stageImage, VK_IMAGE_LAYOUT_PREINITIALIZED, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT );
         setImageLayout( commandBuffer, textureObject->image_, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT );
-        VkImageCopy bltInfo;
-        bltInfo.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, bltInfo.srcSubresource.mipLevel = 0, bltInfo.srcSubresource.baseArrayLayer = 0, bltInfo.srcSubresource.layerCount = 1, bltInfo.srcOffset.x = 0, bltInfo.srcOffset.y = 0, bltInfo.srcOffset.z = 0, bltInfo.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, bltInfo.dstSubresource.mipLevel = 0, bltInfo.dstSubresource.baseArrayLayer = 0, bltInfo.dstSubresource.layerCount = 1, bltInfo.dstOffset.x = 0, bltInfo.dstOffset.y = 0, bltInfo.dstOffset.z = 0, bltInfo.extent.width = imgWidth, bltInfo.extent.height = imgHeight, bltInfo.extent.depth = 1,
 
-                vkCmdCopyImage( commandBuffer, stageImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, textureObject->image_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &bltInfo );
-
+        VkImageCopy copyInfo;
+        copyInfo.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        copyInfo.srcSubresource.mipLevel = 0;
+        copyInfo.srcSubresource.baseArrayLayer = 0;
+        copyInfo.srcSubresource.layerCount = 1;
+        copyInfo.srcOffset.x = 0;
+        copyInfo.srcOffset.y = 0;
+        copyInfo.srcOffset.z = 0;
+        copyInfo.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        copyInfo.dstSubresource.mipLevel = 0;
+        copyInfo.dstSubresource.baseArrayLayer = 0;
+        copyInfo.dstSubresource.layerCount = 1;
+        copyInfo.dstOffset.x = 0;
+        copyInfo.dstOffset.y = 0;
+        copyInfo.dstOffset.z = 0;
+        copyInfo.extent.width = imgWidth;
+        copyInfo.extent.height = imgHeight;
+        copyInfo.extent.depth = 1;
+        vkCmdCopyImage( commandBuffer, stageImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, textureObject->image_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyInfo );
         setImageLayout( commandBuffer, textureObject->image_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT );
     }
 
@@ -596,7 +611,7 @@ VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* textur
     CALL_VK( vkQueueSubmit( device.queue_, 1, &submitInfo, fence ) != VK_SUCCESS );
     CALL_VK( vkWaitForFences( device.device_, 1, &fence, VK_TRUE, 100000000 ) != VK_SUCCESS );
 
-    vkDestroyFence( device.device_, fence, nullptr );
+    vkDestroyFence( device.device_, fence, nullptr ); // todo: fence를 임시로 만들어서 쓰고있는데, render.fence를 써야하는게 정석아닌가?
     vkFreeCommandBuffers( device.device_, commandPool, 1, &commandBuffer );
     vkDestroyCommandPool( device.device_, commandPool, nullptr );
     if( stageImage != VK_NULL_HANDLE )
