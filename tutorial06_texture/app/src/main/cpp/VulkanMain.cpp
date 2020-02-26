@@ -659,7 +659,7 @@ void CreateTexture( void )
     }
 }
 
-bool CreateBuffers( void )
+void CreateBuffers( void )
 {
     // VkBuffer             : size, usage, sharding mode, 어떤 property를 가진 queue에서 접근할지 등을 정의
     //                      : 이 버퍼를 cpu에서 write할 수 있도록 하려면, VkDeviceMemory를 만들어서 cpu address와 binding해야함
@@ -701,8 +701,6 @@ bool CreateBuffers( void )
     CALL_VK( vkMapMemory( device.device_, deviceMemory, 0, allocInfo.allocationSize, 0, &data ) );
     memcpy( data, vertexData, sizeof( vertexData ) );
     vkUnmapMemory( device.device_, deviceMemory );
-
-    return true;
 }
 
 void CreateGraphicsPipeline( void )
