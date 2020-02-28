@@ -413,10 +413,20 @@ VkResult findMemoryTypeIndex( uint32_t typeBits, VkFlags requirementsMask, uint3
 
 VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* textureObject )
 {
-    // blit         : bit block trasnfer의 약어, 데이터 배열을 목적지 배열에 복사하는것을 뜻함
+    // blit         : bit block transfer의 약어, 데이터 배열을 목적지 배열에 복사하는것을 뜻함
     //              : linearTilingFeatures가 VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT 플래그를 갖고 있으면, PRE_INITIALIZED -> READ_ONLY로 layout 변경가능
     //              : VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT 플래그가 없으면, 새로운 VkImage를 READ_ONLY로 만들어 거기에다가 기존의 이미지 데이터를 copy한다.
     //              : 위 과정은 VkImage를 READ_ONLY로 만들기 위함인데, CPU_ACCESSIBLE 한 layout보다 read_only가 더 빠르기 때문이다
+
+    // VK_IMAGE_USAGE_SAMPLED_BIT   : 텍스쳐를 쉐이더가 샘플링 할 수 있도록 하는 bit
+    //                              : image를 샘플링 하려면 imageView 형태로 쉐이더에 전달해줘야함)
+    //                              : imageView 형태로 어떻게 쉐이더에 전달하느냐? => DescriptorSet, DescriptorSetLayout를 이용함
+    //                                  : DescriptorSet와 DescriptorSetLayout이 만들어지고 세팅되는 부분은 다르다!
+
+    //                                  : DescriptorSet         => command buffer recording할때 바인딩된다 (전달할 imageView를 포함한다)
+
+    //                                  : DescriptorSetLayout   => PipelineLayout에 포함된다,
+    //                                                          => 전달받을 ImageView가 샘플링 목적으로 사용된다는 것을 VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER 비트를 통해 알린다
 
     // Check for linear supportability
     VkFormatProperties props;
@@ -903,8 +913,6 @@ VkResult CreateDescriptorSet( void )
     descriptorPoolCreateInfo.maxSets = 1;
     descriptorPoolCreateInfo.poolSizeCount = 1;
     descriptorPoolCreateInfo.pPoolSizes = &descriptorPoolSize;
-
-
     CALL_VK( vkCreateDescriptorPool( device.device_, &descriptorPoolCreateInfo, nullptr, &gfxPipeline.descPool_ ) );
 
     VkDescriptorSetAllocateInfo descriptorSetAllocateInfo;
