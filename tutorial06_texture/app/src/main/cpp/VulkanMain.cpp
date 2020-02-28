@@ -76,7 +76,6 @@ struct TextureObject
 {
     VkSampler sampler_;
     VkImage image_;
-    VkImageLayout imageLayout_;
     VkDeviceMemory deviceMemory_;
     VkImageView imageView_;
     int32_t width_;
@@ -412,30 +411,22 @@ VkResult findMemoryTypeIndex( uint32_t typeBits, VkFlags requirementsMask, uint3
     return VK_ERROR_MEMORY_MAP_FAILED;
 }
 
-VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* textureObject, VkImageUsageFlags usage, VkFlags requiredProps )
+VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* textureObject )
 {
     // blit         : bit block trasnfer의 약어, 데이터 배열을 목적지 배열에 복사하는것을 뜻함
-    if( !( usage | requiredProps ) )
-    {
-        __android_log_print( ANDROID_LOG_ERROR, "tutorial texture", "No usage and required_pros" );
-        return VK_ERROR_FORMAT_NOT_SUPPORTED;
-    }
+    //              : linearTilingFeatures가 VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT 플래그를 갖고 있으면, PRE_INITIALIZED -> READ_ONLY로 layout 변경가능
+    //              : VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT 플래그가 없으면, 새로운 VkImage를 READ_ONLY로 만들어 거기에다가 기존의 이미지 데이터를 copy한다.
+    //              : 위 과정은 VkImage를 READ_ONLY로 만들기 위함인데, CPU_ACCESSIBLE 한 layout보다 read_only가 더 빠르기 때문이다
 
     // Check for linear supportability
     VkFormatProperties props;
-    bool needBlit = true;
     vkGetPhysicalDeviceFormatProperties( device.physicalDevice_, kTexFmt, &props );
     assert( ( props.linearTilingFeatures | props.optimalTilingFeatures ) & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT );
 
-    if( props.linearTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT )
-    {
-        // linear format supporting the required texture
-        needBlit = false;
-    }
+    bool needBlit = static_cast<bool>( props.linearTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT );
 
-    // Read the file:
     AAsset* file = AAssetManager_open( androidAppCtx->activity->assetManager, filePath, AASSET_MODE_BUFFER );
-    size_t fileLength = AAsset_getLength( file );
+    auto fileLength = static_cast<size_t>(AAsset_getLength( file ));
     stbi_uc* fileContent = new unsigned char[fileLength];
     AAsset_read( file, fileContent, fileLength );
     AAsset_close( file );
@@ -453,7 +444,7 @@ VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* textur
     imageCreateInfo.pNext = nullptr;
     imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
     imageCreateInfo.format = kTexFmt;
-    imageCreateInfo.extent = { static_cast<uint32_t>(imgWidth), static_cast<uint32_t>(imgHeight), 1 };
+    imageCreateInfo.extent = { imgWidth, imgHeight, 1 };
     imageCreateInfo.mipLevels = 1;
     imageCreateInfo.arrayLayers = 1;
     imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -479,7 +470,7 @@ VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* textur
     CALL_VK( vkAllocateMemory( device.device_, &memoryAllocateInfo, nullptr, &textureObject->deviceMemory_ ) );
     CALL_VK( vkBindImageMemory( device.device_, textureObject->image_, textureObject->deviceMemory_, 0 ) );
 
-    if( requiredProps & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT )
+    // copy cpu image memory to gpu memory
     {
         VkImageSubresource imageSubresource;
         imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -508,8 +499,6 @@ VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* textur
         stbi_image_free( imageData );
     }
     delete[] fileContent;
-
-    textureObject->imageLayout_ = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
     VkCommandPool commandPool;
     VkCommandPoolCreateInfo commandPoolCreateInfo;
@@ -609,7 +598,7 @@ VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* textur
     submitInfo.pSignalSemaphores = nullptr;
     CALL_VK( vkResetFences( device.device_, 1, &fence ) );
     CALL_VK( vkQueueSubmit( device.queue_, 1, &submitInfo, fence ) != VK_SUCCESS );
-    CALL_VK( vkWaitForFences( device.device_, 1, &fence, VK_TRUE, 100000000 ) != VK_SUCCESS );
+    CALL_VK( vkWaitForFences( device.device_, 1, &fence, VK_TRUE, UINT64_MAX ) != VK_SUCCESS );
 
     vkDestroyFence( device.device_, fence, nullptr ); // todo: fence를 임시로 만들어서 쓰고있는데, render.fence를 써야하는게 정석아닌가?
     vkFreeCommandBuffers( device.device_, commandPool, 1, &commandBuffer );
@@ -626,7 +615,7 @@ void CreateTexture( void )
 {
     for( uint32_t i = 0; i < TUTORIAL_TEXTURE_COUNT; i++ )
     {
-        LoadTextureFromFile( texFiles[i], &textures[i], VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT );
+        LoadTextureFromFile( texFiles[i], &textures[i] );
 
         VkSamplerCreateInfo sampler;
         sampler.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
