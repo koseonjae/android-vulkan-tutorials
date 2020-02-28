@@ -428,6 +428,9 @@ VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* textur
     //                                  : DescriptorSetLayout   => PipelineLayout에 포함된다,
     //                                                          => 전달받을 ImageView가 샘플링 목적으로 사용된다는 것을 VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER 비트를 통해 알린다
 
+    // todo: setImageLayout 할 때, UNDEFINED를 하는것과 preinitialized를 하는것의 차이
+    // todo: setImageLayout 할 때, 각 pipeline stage의 의미
+
     VkFormatProperties props;
     vkGetPhysicalDeviceFormatProperties( device.physicalDevice_, kTexFmt, &props );
     assert( ( props.linearTilingFeatures | props.optimalTilingFeatures ) & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT );
@@ -534,7 +537,60 @@ VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* textur
     }
     else
     {
-        // copy
+        stageImage = textureObject->image_;
+        stageMemory = textureObject->deviceMemory_;
+
+        textureObject->image_ = VK_NULL_HANDLE;
+        textureObject->deviceMemory_ = VK_NULL_HANDLE;
+
+        VkImageCreateInfo imageCreateInfo;
+        imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        imageCreateInfo.pNext = nullptr;
+        imageCreateInfo.flags = 0;
+        imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
+        imageCreateInfo.format = kTexFmt;
+        imageCreateInfo.extent = { imgWidth, imgHeight, 1 };
+        imageCreateInfo.mipLevels = 1;
+        imageCreateInfo.arrayLayers = 1;
+        imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        imageCreateInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT & VK_IMAGE_USAGE_SAMPLED_BIT;
+        imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        imageCreateInfo.queueFamilyIndexCount = 1;
+        imageCreateInfo.pQueueFamilyIndices = &device.queueFamilyIndex_;
+        imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        vkCreateImage( device.device_, &imageCreateInfo, nullptr, &textureObject->image_ );
+
+        VkMemoryRequirements memoryRequirements;
+        vkGetImageMemoryRequirements( device.device_, textureObject->image_, &memoryRequirements );
+
+        VkMemoryAllocateInfo memoryAllocateInfo;
+        memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        memoryAllocateInfo.pNext = nullptr;
+        memoryAllocateInfo.allocationSize = memoryRequirements.size;
+        findMemoryTypeIndex( memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, &memoryAllocateInfo.memoryTypeIndex );
+        vkAllocateMemory( device.device_, &memoryAllocateInfo, nullptr, &textureObject->deviceMemory_ );
+
+        vkBindImageMemory( device.device_, textureObject->image_, textureObject->deviceMemory_, 0 );
+
+        setImageLayout( cmdBuf, stageImage, VK_IMAGE_LAYOUT_PREINITIALIZED, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT );
+        setImageLayout( cmdBuf, textureObject->image_, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT );
+
+        VkImageCopy imageCopy;
+        imageCopy.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        imageCopy.srcSubresource.mipLevel = 0;
+        imageCopy.srcSubresource.baseArrayLayer = 0;
+        imageCopy.srcSubresource.layerCount = 1;
+        imageCopy.srcOffset = { 0, 0, 0 };
+        imageCopy.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        imageCopy.dstSubresource.mipLevel = 0;
+        imageCopy.dstSubresource.baseArrayLayer = 0;
+        imageCopy.dstSubresource.layerCount = 1;
+        imageCopy.dstOffset = { 0, 0, 0 };
+        imageCopy.extent = { imgWidth, imgHeight, 1 };
+        vkCmdCopyImage( cmdBuf, stageImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, textureObject->image_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &imageCopy );
+
+        setImageLayout( cmdBuf, textureObject->image_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT );
     }
 
     vkEndCommandBuffer( cmdBuf );
