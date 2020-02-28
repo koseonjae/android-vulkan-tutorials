@@ -665,6 +665,10 @@ void CreateBuffers( void )
     // VkDeviceMemory       : MemoryRequirements와 allocationInfo를 통해 device memory 객체를 생성한다.
     //                      : cpu voide pointer와 mapping하여 cpu에서 VkBuffer 메모리 write 할 수 있게 한다.
 
+    // VkImage나 VkBuffer가 쉐이더 유니폼으로 쓰일 경우   -> VkImageView, VkBufferView를 만들어서 descriptorSet에 세팅해줘야 함 (그면 descSet이 pipelineLayot에 세팅되고, pipelineLayout을 갖는 pipeline이 command recording 할때 바인딩 됨)
+    // VkBuffer가 Draw call에 쓰이는 경우 -> VkBufferView를 만들 필요 없이 VkBuffer를 CommandRecording할때 bind해줌
+    // VkImage는 draw call에 쓰이지 못함
+
     // todo: staging buffer를 이용한 최적화
 
     const float vertexData[] = { -1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f, -1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.5f, 1.0f, };
