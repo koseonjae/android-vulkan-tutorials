@@ -683,8 +683,6 @@ void CreateBuffers( void )
     // VkBuffer가 Draw call에 쓰이는 경우 -> VkBufferView를 만들 필요 없이 VkBuffer를 CommandRecording할때 bind해줌
     // VkImage는 draw call에 쓰이지 못함
 
-    // todo: staging buffer를 이용한 최적화
-
     const float vertexData[] = { -1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f, -1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.5f, 1.0f, };
 
     VkBufferCreateInfo createBufferInfo;
