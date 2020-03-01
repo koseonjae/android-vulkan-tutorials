@@ -428,8 +428,14 @@ VkResult LoadTextureFromFile( const char* filePath, struct TextureObject* textur
     //                                  : DescriptorSetLayout   => PipelineLayout에 포함된다,
     //                                                          => 전달받을 ImageView가 샘플링 목적으로 사용된다는 것을 VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER 비트를 통해 알린다
 
-    // todo: setImageLayout 할 때, UNDEFINED를 하는것과 preinitialized를 하는것의 차이
-    // todo: setImageLayout 할 때, 각 pipeline stage의 의미
+    // VK_IMAGE_LAYOUT_UNDEFINED        : GPU가 access하기 위한 레이아웃이 아님
+    //                                  : VkImageCreateInfo, VkAttachmentDescription에서의 initialLayout으로 쓰이거나,
+    //                                  : ImageMemoryBarrier를 통한 레이아웃 전환에서 oldLayout으로 쓰인다.
+    //                                  : 당연하게도, ImageMemoryBarrier의 oldLayout으로 쓰일 때, 이 메모 내용은 보존되지 않는다.
+    //                                  : (즉, memory barrier를 통해 transition하기 전에 어떤 값을 쓰더라도 무의미 하다. 뭔가를 쓰려면 preinitialized layout을 써야함)
+
+    // VK_IMAGE_LAYOUT_PREINITIALIZED   : UNDEFINED layout과 마찬가지로 initialLayout이나, oldLayout으로 쓰인다.
+    //                                  : 다만 undefined와 다르게, transition이전에 값을 쓰면 그 값이 transition 이후에 보존된다.
 
     VkFormatProperties props;
     vkGetPhysicalDeviceFormatProperties( device.physicalDevice_, kTexFmt, &props );
@@ -650,16 +656,17 @@ void CreateTexture( void )
         sampler.maxLod = 0.0f;
         sampler.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
         sampler.unnormalizedCoordinates = VK_FALSE;
+        CALL_VK( vkCreateSampler( device.device_, &sampler, nullptr, &textures[i].sampler_ ) );
 
         VkImageViewCreateInfo view;
         view.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         view.pNext = nullptr;
+        view.flags = 0;
         view.image = VK_NULL_HANDLE;
         view.viewType = VK_IMAGE_VIEW_TYPE_2D;
         view.format = kTexFmt;
-        view.components = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A, }, view.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }, view.flags = 0;
-
-        CALL_VK( vkCreateSampler( device.device_, &sampler, nullptr, &textures[i].sampler_ ) );
+        view.components = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A, };
+        view.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
         view.image = textures[i].image_;
         CALL_VK( vkCreateImageView( device.device_, &view, nullptr, &textures[i].imageView_ ) );
     }
